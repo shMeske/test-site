@@ -3,8 +3,9 @@ name: Test, Build an Deploy
 on:
   push:
     branches: [ master ]
-  pull_request:
-    branches: [ master ]
+
+permissions: 
+  contents: write
 
 jobs:
   test_build_and_deploy:
