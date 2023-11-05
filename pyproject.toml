@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "biopsykit-dashboard"
+name = "test-site"
 version = "0.1.0"
 description = ""
 authors = ["Simon Meske <simon.h.meske@fau.de>"]
