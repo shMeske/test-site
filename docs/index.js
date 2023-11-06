@@ -69,6 +69,12 @@ import string
 import math
 import plotly.express as px
 import matplotlib.pyplot as plt
+import holoviews.plotting.mpl
+import matplotlib
+import numpy as np
+import holoviews as hv
+from holoviews import opts
+hv.extension('matplotlib')
 os.environ["OUTDATED_IGNORE"] = "1"
 pn.extension(notifications=True)
 from ast import literal_eval
@@ -1643,12 +1649,13 @@ class PlotViewer(pn.viewable.Viewer):
         self.select_phase = pn.widgets.Select(name="Phase")
         if signal is not None:
             self.select_result.options = list(signal.keys())
-        self.graph = pn.pane.Matplotlib()
-        self.select_result.link(self.graph, callbacks={"value": self.change_result})
-        self.select_phase.link(self.graph, callbacks={"value": self.change_phase})
-        self._layout = pn.Column(
-            pn.Row(self.select_result, self.select_phase), self.graph
-        )
+        # self.graph = pn.pane.Matplotlib()
+        # self.select_result.link(self.graph, callbacks={"value": self.change_result})
+        # self.select_phase.link(self.graph, callbacks={"value": self.change_phase})
+        self.select_result.link(self, callbacks={"value": self.change_result})
+        self.select_phase.link(self, callbacks={"value": self.change_phase})
+        self._layout = pn.Column(pn.Row(self.select_result, self.select_phase))
+        # , self.graph
         super().__init__(**params)
 
     def set_signal_type(self, signal_type: str):
@@ -1665,34 +1672,47 @@ class PlotViewer(pn.viewable.Viewer):
         self._sampling_rate = sampling_rate
         self.select_result.options = list(signal.keys())
 
-    def set_signal(self, signal: Dict[str, pd.DataFrame]):
+    def set_signal(self, signal: Dict[str, _BaseProcessor]):
         self._signal = signal
         self.select_result.options = list(signal.keys())
 
     def change_phase(self, target, event):
+        print("change phase")
         phase = event.new
         subject = self.select_result.value
         if subject is None or phase is None:
+            print("subject or phase is None")
             return
-        if self._signal_type == "ECG" and self._signal is not None:
-            self.select_phase.options = list()
+        if (
+            self._signal_type == "ECG"
+            and self._signal is not None
+            and subject in self._signal.keys()
+        ):
             fig, _ = bp.signals.ecg.plotting.ecg_plot(
                 ecg_processor=self._signal[subject],
                 sampling_rate=self._sampling_rate,
                 key=phase,
             )
-            target.object = fig
+            if fig is not None:
+                print("fig is not None")
+                # target.object = fig
 
     def change_result(self, target, event):
-        if self._signal_type == "ECG" and self._signal is not None:
-            self.select_phase.options = list()
+        print("change result")
+        if (
+            self._signal_type == "ECG"
+            and self._signal is not None
+            and event.new in self._signal.keys()
+        ):
+            print("change result -> creating fig")
             fig, _ = bp.signals.ecg.plotting.ecg_plot(
                 ecg_processor=self._signal[event.new],
                 sampling_rate=self._sampling_rate,
                 key=self._signal[event.new].phases[0],
             )
             self.select_phase.options = self._signal[event.new].phases
-            target.object = fig
+            if fig is not None:
+                target.object = fig
 
     def __panel__(self):
         return self._layout
@@ -6037,14 +6057,19 @@ from nilspodlib import Dataset
 
 class ProcessingPreStep(PhysiologicalBase):
     ready = param.Boolean(default=False)
-    ready_btn = pn.widgets.Button(name="Ok", button_type="primary")
+    ready_btn = pn.widgets.Button(
+        name="Ok", button_type="primary", sizing_mode="stretch_width"
+    )
 
     def __init__(self, **params):
         params["HEADER_TEXT"] = PRESTEP_PROCESSING_TEXT
         super().__init__(**params)
         self.update_step(8)
         self.ready_btn.link(self, callbacks={"clicks": self.ready_btn_click})
-        self._view = pn.Column(self.header, self.ready_btn)
+        self._view = pn.Column(
+            self.header,
+            pn.Row(pn.layout.HSpacer(), self.ready_btn, pn.layout.HSpacer()),
+        )
 
     def ready_btn_click(self, target, event):
         self.ready = True
@@ -6064,9 +6089,8 @@ class ProcessingAndPreview(PhysiologicalBase):
         self.subject_time_dict = {}
         self.result_view = SubjectDataFrameView({})
         self.result_graph = PlotViewer(None, None, None)
-        self._view = pn.Column(
-            self.header, self.results, self.result_view, self.result_graph
-        )
+        self._view = pn.Column(self.header, self.results, self.result_view)
+        # , self.result_graph
 
     def get_phases(self) -> list:
         if self.subject is not None:
@@ -6090,6 +6114,7 @@ class ProcessingAndPreview(PhysiologicalBase):
             self.process_rsp()
         if not self.skip_hrv:
             col.append(self.process_hrv())
+        print("all processing done")
         return col
 
     def get_dataframes_as_accordions(self):
@@ -6209,6 +6234,7 @@ class ProcessingAndPreview(PhysiologicalBase):
         col = pn.Column()
         self.ecg_processor = {}
         for subject in self.data.keys():
+            print(subject)
             ep = EcgProcessor(
                 data=self.data[subject],
                 sampling_rate=self.sampling_rate,
@@ -6219,20 +6245,7 @@ class ProcessingAndPreview(PhysiologicalBase):
                 outlier_params=self.outlier_params,
             )
             self.ecg_processor[subject] = ep
-        # elif self.session == "Multiple Sessions":
-        #     self.ecg_processor = {}
-        #     for subject in self.data.keys():
-        #         ep = EcgProcessor(
-        #             data=self.data[subject],
-        #             sampling_rate=self.sampling_rate,
-        #             time_intervals=self.get_timelog(subject),
-        #         )
-        #         ep.ecg_process(
-        #             outlier_correction=self.selected_outlier_methods,
-        #             outlier_params=self.outlier_params,
-        #             title=subject,
-        #         )
-        #         self.ecg_processor[subject] = ep
+        print("Processing Done")
         subject_result_dict = {}
         graph_dict = {}
         for subject in self.ecg_processor.keys():
@@ -6244,6 +6257,7 @@ class ProcessingAndPreview(PhysiologicalBase):
             graph_dict[subject] = self.ecg_processor[subject]
         self.result_view.set_subject_results(subject_result_dict)
         self.result_graph.set_signal(graph_dict)
+        print("return from processing")
         return col
 
     def process_hr(self):
@@ -6312,7 +6326,9 @@ class ProcessingAndPreview(PhysiologicalBase):
     def panel(self):
         self.results = self.processing()
         self.result_graph.set_signal_type(self.signal)
+        print("set signal type done")
         self.result_graph.set_sampling_rate(self.sampling_rate)
+        print("set sampling rate done")
         return self._view
 
 
@@ -6321,7 +6337,7 @@ class AskToProcessHRV(PhysiologicalBase):
     methods = ["hrv_time", "hrv_nonlinear", "hrv_frequency"]
     skip_btn = pn.widgets.Button(name="Skip", sizing_mode="stretch_width")
     expert_mode_btn = pn.widgets.Button(
-        name="Expert Mode", button_type="warning", sizing_mode="stretch_width"
+        name="Expert Mode", button_type="danger", sizing_mode="stretch_width"
     )
     default_btn = pn.widgets.Button(
         name="Default", button_type="primary", sizing_mode="stretch_width"
@@ -6340,7 +6356,7 @@ class AskToProcessHRV(PhysiologicalBase):
         self.default_btn.link(self, callbacks={"clicks": self.click_default_hrv})
         self.expert_mode_btn.link(self, callbacks={"clicks": self.click_expert_hrv})
         self._view = pn.Column(
-            self.header, pn.Row(self.skip_btn, self.default_btn, self.expert_mode_btn)
+            self.header, pn.Row(self.default_btn, self.expert_mode_btn, self.skip_btn)
         )
 
     def click_skip(self, target, event):
@@ -8065,13 +8081,6 @@ pn.extension("plotly", "tabulator")
 
 
 class MainPage(param.Parameterized):
-    welcomeText = ""
-    signalSelection = pn.GridBox(ncols=3)
-    physBtn = pn.widgets.Button(name="Physiological Data", button_type="light")
-    sleepBtn = pn.widgets.Button(name="Sleep Data")
-    questionnaireBtn = pn.widgets.Button(name="Questionnaire Data")
-    psychBtn = pn.widgets.Button(name="Psychological Data")
-    salBtn = pn.widgets.Button(name="Saliva Data")
     app = None
     name_pipeline_dict = {
         "Physiological Data": PhysiologicalPipeline(),
@@ -8087,7 +8096,6 @@ class MainPage(param.Parameterized):
             app.notifications.error("No Pipeline found for this Button")
             return
         pipeline = self.name_pipeline_dict[pipeline_name]
-        self.app.notifications.info("Starting Pipeline")
         pane = pn.Column(
             pn.Row(
                 pn.layout.HSpacer(),
@@ -8150,119 +8158,6 @@ class MainPage(param.Parameterized):
                 height=250,
             )
             card_list.append(card)
-        #
-        # physBtn = pn.widgets.Button(
-        #     name="Physiological Data",
-        #     sizing_mode="stretch_width",
-        #     align="end",
-        #     button_type="primary",
-        # )
-        # physBtn.on_click(self.start_pipeline)
-        # physCard = pn.GridBox(
-        #     pn.pane.SVG(
-        #         "https://tabler-icons.io/static/tabler-icons/icons/wave-saw-tool.svg",
-        #         align=("center"),
-        #         sizing_mode="stretch_both",
-        #         max_height=150,
-        #         max_width=200,
-        #         styles={"background": "whitesmoke"},
-        #     ),
-        #     pn.Spacer(height=45),
-        #     physBtn,
-        #     ncols=1,
-        #     styles={"background": "whitesmoke", "align": "center"},
-        #     width=250,
-        #     height=250,
-        # )
-        # sleepBtn = pn.widgets.Button(
-        #     name="Sleep Data",
-        #     sizing_mode="stretch_width",
-        #     align="end",
-        #     button_type="primary",
-        # )
-        # sleepBtn.on_click(self.start_pipeline)
-        # sleepCard = pn.GridBox(
-        #     pn.pane.SVG(
-        #         "https://tabler-icons.io/static/tabler-icons/icons/bed-filled.svg",
-        #         align=("center"),
-        #         sizing_mode="stretch_both",
-        #         max_height=150,
-        #         max_width=160,
-        #         fixed_aspect=False,
-        #     ),
-        #     pn.Spacer(height=45),
-        #     sleepBtn,
-        #     ncols=1,
-        #     styles={"background": "whitesmoke", "align": "center"},
-        #     width=250,
-        #     height=250,
-        # )
-        # questionnaireBtn = pn.widgets.Button(
-        #     name="Questionnaire Data",
-        #     sizing_mode="stretch_width",
-        #     button_type="primary",
-        # )
-        # questionnaireBtn.on_click(self.start_pipeline)
-        # questionnaireCard = pn.GridBox(
-        #     pn.pane.SVG(
-        #         "https://tabler-icons.io/static/tabler-icons/icons/clipboard-check.svg",
-        #         align=("center"),
-        #         sizing_mode="stretch_both",
-        #         max_height=150,
-        #         max_width=150,
-        #         styles={"background": "whitesmoke"},
-        #     ),
-        #     pn.Spacer(height=45),
-        #     questionnaireBtn,
-        #     ncols=1,
-        #     styles={"background": "whitesmoke", "align": "center"},
-        #     width=250,
-        #     height=250,
-        # )
-        # psychBtn = pn.widgets.Button(
-        #     name="Psychological Data",
-        #     sizing_mode="stretch_width",
-        #     button_type="primary",
-        # )
-        # psychBtn.on_click(self.start_pipeline)
-        # psychCard = pn.GridBox(
-        #     pn.pane.SVG(
-        #         "https://tabler-icons.io/static/tabler-icons/icons/brain.svg",
-        #         align=("center"),
-        #         sizing_mode="stretch_both",
-        #         max_height=150,
-        #         max_width=150,
-        #         styles={"background": "whitesmoke"},
-        #     ),
-        #     pn.Spacer(height=45),
-        #     psychBtn,
-        #     ncols=1,
-        #     styles={"background": "whitesmoke", "align": "center"},
-        #     width=250,
-        #     height=250,
-        # )
-        # salBtn = pn.widgets.Button(
-        #     name="Saliva Data",
-        #     sizing_mode="stretch_width",
-        #     button_type="primary",
-        # )
-        # salBtn.on_click(self.start_pipeline)
-        # salCard = pn.GridBox(
-        #     pn.pane.SVG(
-        #         "https://tabler-icons.io/static/tabler-icons/icons/test-pipe.svg",
-        #         align=("center"),
-        #         sizing_mode="stretch_both",
-        #         max_height=150,
-        #         max_width=150,
-        #         styles={"background": "whitesmoke"},
-        #     ),
-        #     pn.Spacer(height=45),
-        #     salBtn,
-        #     ncols=1,
-        #     styles={"background": "whitesmoke", "align": "center"},
-        #     width=250,
-        #     height=250,
-        # )
         signalSelection = pn.GridBox(
             *card_list,
             ncols=3,
@@ -8279,9 +8174,8 @@ class MainPage(param.Parameterized):
     def __init__(self, app, **params):
         self.app = app
         self.welcomeText = WELCOME_TEXT
-        self.signalSelection.append(self.physBtn)
         super().__init__(**params)
-        self._view = pn.Column(pn.pane.Markdown(self.welcomeText), self.signalSelection)
+        self._view = pn.Column(pn.pane.Markdown(self.welcomeText))
 
     def view(self):
         return self._view
@@ -8408,7 +8302,11 @@ class TrimSession(PhysiologicalBase):
 
 
 
+
 os.environ["OUTDATED_IGNORE"] = "1"
+
+
+matplotlib.use("agg")
 
 
 pn.extension(sizing_mode="stretch_width")
@@ -8426,13 +8324,6 @@ pn.extension("plotly", "tabulator")
 
 
 class MainPage(param.Parameterized):
-    welcomeText = ""
-    signalSelection = pn.GridBox(ncols=3)
-    physBtn = pn.widgets.Button(name="Physiological Data", button_type="light")
-    sleepBtn = pn.widgets.Button(name="Sleep Data")
-    questionnaireBtn = pn.widgets.Button(name="Questionnaire Data")
-    psychBtn = pn.widgets.Button(name="Psychological Data")
-    salBtn = pn.widgets.Button(name="Saliva Data")
     app = None
     name_pipeline_dict = {
         "Physiological Data": PhysiologicalPipeline(),
@@ -8448,7 +8339,6 @@ class MainPage(param.Parameterized):
             app.notifications.error("No Pipeline found for this Button")
             return
         pipeline = self.name_pipeline_dict[pipeline_name]
-        self.app.notifications.info("Starting Pipeline")
         pane = pn.Column(
             pn.Row(
                 pn.layout.HSpacer(),
@@ -8511,119 +8401,6 @@ class MainPage(param.Parameterized):
                 height=250,
             )
             card_list.append(card)
-        #
-        # physBtn = pn.widgets.Button(
-        #     name="Physiological Data",
-        #     sizing_mode="stretch_width",
-        #     align="end",
-        #     button_type="primary",
-        # )
-        # physBtn.on_click(self.start_pipeline)
-        # physCard = pn.GridBox(
-        #     pn.pane.SVG(
-        #         "https://tabler-icons.io/static/tabler-icons/icons/wave-saw-tool.svg",
-        #         align=("center"),
-        #         sizing_mode="stretch_both",
-        #         max_height=150,
-        #         max_width=200,
-        #         styles={"background": "whitesmoke"},
-        #     ),
-        #     pn.Spacer(height=45),
-        #     physBtn,
-        #     ncols=1,
-        #     styles={"background": "whitesmoke", "align": "center"},
-        #     width=250,
-        #     height=250,
-        # )
-        # sleepBtn = pn.widgets.Button(
-        #     name="Sleep Data",
-        #     sizing_mode="stretch_width",
-        #     align="end",
-        #     button_type="primary",
-        # )
-        # sleepBtn.on_click(self.start_pipeline)
-        # sleepCard = pn.GridBox(
-        #     pn.pane.SVG(
-        #         "https://tabler-icons.io/static/tabler-icons/icons/bed-filled.svg",
-        #         align=("center"),
-        #         sizing_mode="stretch_both",
-        #         max_height=150,
-        #         max_width=160,
-        #         fixed_aspect=False,
-        #     ),
-        #     pn.Spacer(height=45),
-        #     sleepBtn,
-        #     ncols=1,
-        #     styles={"background": "whitesmoke", "align": "center"},
-        #     width=250,
-        #     height=250,
-        # )
-        # questionnaireBtn = pn.widgets.Button(
-        #     name="Questionnaire Data",
-        #     sizing_mode="stretch_width",
-        #     button_type="primary",
-        # )
-        # questionnaireBtn.on_click(self.start_pipeline)
-        # questionnaireCard = pn.GridBox(
-        #     pn.pane.SVG(
-        #         "https://tabler-icons.io/static/tabler-icons/icons/clipboard-check.svg",
-        #         align=("center"),
-        #         sizing_mode="stretch_both",
-        #         max_height=150,
-        #         max_width=150,
-        #         styles={"background": "whitesmoke"},
-        #     ),
-        #     pn.Spacer(height=45),
-        #     questionnaireBtn,
-        #     ncols=1,
-        #     styles={"background": "whitesmoke", "align": "center"},
-        #     width=250,
-        #     height=250,
-        # )
-        # psychBtn = pn.widgets.Button(
-        #     name="Psychological Data",
-        #     sizing_mode="stretch_width",
-        #     button_type="primary",
-        # )
-        # psychBtn.on_click(self.start_pipeline)
-        # psychCard = pn.GridBox(
-        #     pn.pane.SVG(
-        #         "https://tabler-icons.io/static/tabler-icons/icons/brain.svg",
-        #         align=("center"),
-        #         sizing_mode="stretch_both",
-        #         max_height=150,
-        #         max_width=150,
-        #         styles={"background": "whitesmoke"},
-        #     ),
-        #     pn.Spacer(height=45),
-        #     psychBtn,
-        #     ncols=1,
-        #     styles={"background": "whitesmoke", "align": "center"},
-        #     width=250,
-        #     height=250,
-        # )
-        # salBtn = pn.widgets.Button(
-        #     name="Saliva Data",
-        #     sizing_mode="stretch_width",
-        #     button_type="primary",
-        # )
-        # salBtn.on_click(self.start_pipeline)
-        # salCard = pn.GridBox(
-        #     pn.pane.SVG(
-        #         "https://tabler-icons.io/static/tabler-icons/icons/test-pipe.svg",
-        #         align=("center"),
-        #         sizing_mode="stretch_both",
-        #         max_height=150,
-        #         max_width=150,
-        #         styles={"background": "whitesmoke"},
-        #     ),
-        #     pn.Spacer(height=45),
-        #     salBtn,
-        #     ncols=1,
-        #     styles={"background": "whitesmoke", "align": "center"},
-        #     width=250,
-        #     height=250,
-        # )
         signalSelection = pn.GridBox(
             *card_list,
             ncols=3,
@@ -8640,9 +8417,8 @@ class MainPage(param.Parameterized):
     def __init__(self, app, **params):
         self.app = app
         self.welcomeText = WELCOME_TEXT
-        self.signalSelection.append(self.physBtn)
         super().__init__(**params)
-        self._view = pn.Column(pn.pane.Markdown(self.welcomeText), self.signalSelection)
+        self._view = pn.Column(pn.pane.Markdown(self.welcomeText))
 
     def view(self):
         return self._view
@@ -8651,6 +8427,7 @@ app = pn.template.BootstrapTemplate(
     title="BioPysKit Dashboard",
     header_background="#186FEF",
     logo="./assets/Icons/biopsykit_Icon.png",
+    favicon="https://raw.githubusercontent.com/shMeske/test-site/gh-pages/favicon.ico",
 )
 
 app.config.console_output = "disable"
@@ -8658,7 +8435,12 @@ app.config.log_level = "CRITICAL"
 app.sidebar.constant = False
 app.main.constant = False
 app.theme_toggle = False
-info_btn = pn.widgets.Button(button_type="light", icon="help-hexagon", width=15)
+info_btn = pn.widgets.Button(
+    button_type="light",
+    icon="help-square",
+    width=15,
+    name="Info",
+)
 info_btn.js_on_click(
     args={
         "target": "https://shmeske.github.io/biopsykit-dashboard-documentation/general-info.html"
