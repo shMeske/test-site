@@ -1456,9 +1456,10 @@ LOAD_PLATE_DATA_TEXT = (
 )
 SHOW_FEATURES_TEXT = "# Show Features"
 
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 from biopsykit.signals._base import _BaseProcessor
+from matplotlib.figure import Figure
 
 
 class PipelineHeader(pn.viewable.Viewer):
@@ -1649,13 +1650,12 @@ class PlotViewer(pn.viewable.Viewer):
         self.select_phase = pn.widgets.Select(name="Phase")
         if signal is not None:
             self.select_result.options = list(signal.keys())
-        # self.graph = pn.pane.Matplotlib()
-        # self.select_result.link(self.graph, callbacks={"value": self.change_result})
-        # self.select_phase.link(self.graph, callbacks={"value": self.change_phase})
-        self.select_result.link(self, callbacks={"value": self.change_result})
-        self.select_phase.link(self, callbacks={"value": self.change_phase})
-        self._layout = pn.Column(pn.Row(self.select_result, self.select_phase))
-        # , self.graph
+        self.graph = pn.pane.Matplotlib(object=Figure(figsize=(8, 6)))
+        self.select_result.link(self.graph, callbacks={"value": self.change_result})
+        self.select_phase.link(self.graph, callbacks={"value": self.change_phase})
+        self._layout = pn.Column(
+            pn.Row(self.select_result, self.select_phase), self.graph
+        )
         super().__init__(**params)
 
     def set_signal_type(self, signal_type: str):
@@ -1687,32 +1687,64 @@ class PlotViewer(pn.viewable.Viewer):
             self._signal_type == "ECG"
             and self._signal is not None
             and subject in self._signal.keys()
+            and phase is not None
+            and phase in self._signal[subject].phases
         ):
+            print(f"change phase -> creating fig {subject} {phase}")
             fig, _ = bp.signals.ecg.plotting.ecg_plot(
                 ecg_processor=self._signal[subject],
                 sampling_rate=self._sampling_rate,
                 key=phase,
+                plot_distribution=False,
+                plot_individual_beats=False,
             )
+            print("fig created")
             if fig is not None:
                 print("fig is not None")
-                # target.object = fig
+                target.object = fig
+                return
+        target.object = Figure(figsize=(8, 6))
 
     def change_result(self, target, event):
-        print("change result")
+        print("PlotViewer change result")
+        subject = event.new
+        phase = self.select_phase.value
+        print(f"PlotViewer change result {subject} {phase}")
+        if subject is None or subject == "":
+            self.select_phase.options = [""]
+            print("PlotViewer change result: Set Phases to []")
+        elif subject in self._signal.keys():
+            print(
+                f"PlotViewer change result: Set Phases to {self._signal[subject].phases}"
+            )
+            self.select_phase.options = [""] + list(self._signal[subject].phases)
+        else:
+            print("PlotViewer change result: None nono")
+            target.object = Figure(figsize=(8, 6))
+            return
         if (
             self._signal_type == "ECG"
             and self._signal is not None
-            and event.new in self._signal.keys()
+            and subject in self._signal.keys()
+            and phase is not None
+            and phase != ""
+            and phase in self._signal[subject].phases
         ):
-            print("change result -> creating fig")
+            print(f"change result -> creating fig {event.new} ")
             fig, _ = bp.signals.ecg.plotting.ecg_plot(
-                ecg_processor=self._signal[event.new],
+                ecg_processor=self._signal[subject],
                 sampling_rate=self._sampling_rate,
-                key=self._signal[event.new].phases[0],
+                key=phase,
+                plot_distribution=False,
+                plot_individual_beats=False,
+                **{"figsize": (8, 6)},
             )
             self.select_phase.options = self._signal[event.new].phases
+            print("fig created")
             if fig is not None:
                 target.object = fig
+                return
+        target.object = Figure(figsize=(8, 6))
 
     def __panel__(self):
         return self._layout
@@ -4261,8 +4293,8 @@ class UploadSleepData(SleepBase):
 
 class SleepPipeline:
     name = "Sleep"
-    icon_svg = "https://tabler-icons.io/static/tabler-icons/icons/bed-filled.svg"
-    icon_name = "bed-filled"
+    icon_svg = "https://tabler-icons.io/static/tabler-icons/icons/bed.svg"
+    icon_name = "bed"
 
     def __init__(self):
         self.pipeline = pn.pipeline.Pipeline()
@@ -4855,6 +4887,7 @@ class DownloadResults(PhysiologicalBase):
         self._view = pn.Column(self.header)
         self._view.append(self._load_results_checkbox)
         self._view.append(self.load_plots_hrv)
+        # self._view.append(self.load_plots_ecg)
 
     def get_selected_files(self):
         print("get selected files")
@@ -4947,19 +4980,25 @@ class DownloadResults(PhysiologicalBase):
             zip_file.writestr(f"HRV_{key}.png", buf.getvalue())
 
     def load_ecg_plots(self, zip_file):
-        if self.subject is not None:
-            for key in self.ecg_processor[self.subject].ecg_result.keys():
-                buf = io.BytesIO()
-                fig, axs = bp.signals.ecg.plotting.ecg_plot(
-                    self.ecg_processor[self.subject], key=key
-                )
-                fig.savefig(buf)
-                zip_file.writestr(f"ECG_{key}_{self.subject}.png", buf.getvalue())
+        print("load ecg plots")
+        if isinstance(self.ecg_processor, dict):
+            for subject in self.ecg_processor.keys():
+                print(f"Subject: {subject}")
+                for key in self.ecg_processor[self.subject].ecg_result.keys():
+                    print(f"Key: {key}")
+                    print("create ecg plot")
+                    buf = io.BytesIO()
+                    fig, axs = bp.signals.ecg.plotting.ecg_plot(
+                        self.ecg_processor[subject], key=key
+                    )
+                    fig.savefig(buf)
+                    zip_file.writestr(f"ECG_{key}_{subject}.png", buf.getvalue())
         elif type(self.ecg_processor) != dict:
             buf = io.BytesIO()
             fig, axs = bp.signals.ecg.plotting.ecg_plot(self.ecg_processor, key="Data")
             fig.savefig(buf)
             zip_file.writestr(f"ECG.png", buf.getvalue())
+        print("load ecg plots done")
 
     def load_eeg_plots(self, zip_file):
         for key in self.eeg_processor.keys():
@@ -5935,7 +5974,7 @@ class DataArrived(PhysiologicalBase):
             self.ready = False
             app.notifications.warning("Please provide a sampling rate")
         self.subject_selector.options = [""] + list(self.data.keys())
-        self.subject_selector.value = ""
+        self.subject_selector.value = list(self.data.keys())[0]
         self.subject_selector.visible = self.data is not None
         self.data_view.visible = self.data is not None
         return self._view
@@ -8036,8 +8075,8 @@ class SalivaPipeline:
 
 class SleepPipeline:
     name = "Sleep"
-    icon_svg = "https://tabler-icons.io/static/tabler-icons/icons/bed-filled.svg"
-    icon_name = "bed-filled"
+    icon_svg = "https://tabler-icons.io/static/tabler-icons/icons/bed.svg"
+    icon_name = "bed"
 
     def __init__(self):
         self.pipeline = pn.pipeline.Pipeline()
