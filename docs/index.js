@@ -64,17 +64,16 @@ import pytz
 import zipfile
 import seaborn as sns
 import fau_colors
+import neurokit2 as nk
+import holoviews as hv
 import re
 import string
 import math
 import plotly.express as px
 import matplotlib.pyplot as plt
-import holoviews.plotting.mpl
-import matplotlib
 import numpy as np
 import holoviews as hv
 from holoviews import opts
-hv.extension('matplotlib')
 os.environ["OUTDATED_IGNORE"] = "1"
 pn.extension(notifications=True)
 from ast import literal_eval
@@ -1155,211 +1154,6 @@ class SetUpStudyDesign(param.Parameterized):
 
 
 
-def add_keys_nested_dict(d, keys):
-    if d is None:
-        d = {}
-    if len(keys) == 1 and keys[0] not in d:
-        d.setdefault(keys[0], None)
-    else:
-        key = keys[0]
-        if key not in d:
-            d[key] = {}
-        if d[key] is None:
-            d[key] = {}
-        add_keys_nested_dict(d[key], keys[1:])
-
-
-def change_value_nested_dict(d, keys, value):
-    if len(keys) == 1:
-        d[keys[0]] = value
-    else:
-        change_value_nested_dict(d[keys[0]], keys[1:], value)
-
-
-# TODO: Rename Phase
-class SetUpStudyDesign(param.Parameterized):
-    add_study_btn = pn.widgets.Button(
-        name="Add Study Part", button_type="primary", align="end"
-    )
-    study_name_input = pn.widgets.TextInput(
-        name="Study Name",
-        value="",
-        placeholder="Type in here the name of the Study Part",
-    )
-    add_phase_btn = pn.widgets.Button(name="Add Phase", button_type="primary")
-    add_subphase_btn = pn.widgets.Button(name="Add Subphase", button_type="primary")
-    structure_accordion = pn.layout.Accordion(name="Study Structure")
-    subject_time_dict = param.Dynamic()
-    structure = {}
-
-    def add_study_part(self, _):
-        part_name = self.study_name_input.value
-        if not self._assert_study_part_name(part_name):
-            return
-        self.structure[part_name] = None
-        self.structure_accordion.append(self.get_phase_panel(part_name))
-
-    def _assert_study_part_name(self, name):
-        if name in self.structure.keys():
-            app.notifications.error("Study Part already exists")
-            return False
-        if name == "":
-            app.notifications.warning("Please enter a name for the study part")
-            return False
-        if name is None:
-            app.notifications.warning("Please enter a name for the study part")
-            return False
-        return True
-
-    def state_add_phase(self, target, event):
-        target.disabled = not self._assert_study_part_name(event.new)
-
-    def state_add_value(self, target, event):
-        target.disabled = event.new is None or event.new == ""
-
-    # TODO
-    def change_value(self, input_value, keys):
-        change_value_nested_dict(self.structure, keys, input_value)
-
-    # TODO: entsprechenden key aus Liste nehmen
-    def remove_value(self, btn, keys):
-        if not btn:
-            return
-        if len(keys) == 1:
-            self.structure[keys[0]] = None
-            index = self.get_accordion_index(keys[0])
-            if index == -1:
-                return
-            self.structure_accordion.__setitem__(index, self.get_phase_panel(keys[0]))
-
-    def add_value(self, input_value, btn, part_name, phase_row):
-        if not btn:
-            app.notifications.warning("Click on Add Value in order to add a value")
-            return
-        change_value_nested_dict(self.structure, part_name, input_value)
-        app.notifications.success("Value added")
-        phase_row.visible = False
-        print(self.structure)
-        # TODO: noch an richtige Stelle einfügen
-        # self.structure_accordion.__setitem__(index, col)
-
-    def get_accordion_index(self, name):
-        index_list = [
-            lst_index
-            for (lst_index, element) in enumerate(self.structure_accordion.objects)
-            if element.name == name
-        ]
-        if len(index_list) != 1:
-            app.notifications.error("Phase not found")
-            return -1
-        index = index_list[0]
-        return index
-
-    # TODO: Fix
-    def remove_phase(self, btn, part_name, phase_name):
-        if not btn:
-            return
-        pass
-        # self.structure.pop(part_name)
-        # index = self.get_accordion_index(part_name)
-        # if index == -1:
-        #     return
-        # self.structure_accordion.pop(index)
-
-    def add_subphase(
-        self, btn, subphase_name_input, part_name, value_row, subphase_acc
-    ):
-        if not btn:
-            return
-        if not subphase_name_input:
-            return
-        value_row.visible = False
-        key_list = part_name + [subphase_name_input]
-        panel = self.get_phase_panel(key_list)
-        subphase_acc.append(panel)
-        add_keys_nested_dict(self.structure, key_list)
-
-    def get_phase_panel(self, part_name) -> pn.Column:
-        if not isinstance(part_name, list):
-            part_name = [part_name]
-        value_input = pn.widgets.IntInput(
-            name="Value",
-            placeholder="Type in here the value of the Phase",
-        )
-        value_add_btn = pn.widgets.Button(
-            name="Add Value", button_type="primary", align="end", disabled=True
-        )
-        value_input.link(value_add_btn, callbacks={"value": self.state_add_value})
-        subphase_name_input = pn.widgets.TextInput(
-            name="Subphase Name",
-            value="",
-            placeholder="Type in here the name of the Subphase",
-        )
-        subphase_add_btn = pn.widgets.Button(
-            name="Add Subphase", button_type="primary", align="end", disabled=False
-        )
-        if len(part_name) == 3:
-            subphase_add_btn.visible = False
-            subphase_name_input.visible = False
-        value_row = pn.Row(value_input, value_add_btn)
-        phase_row = pn.Row(subphase_name_input, subphase_add_btn)
-        rename_input = pn.widgets.TextInput(
-            name="Rename Phase", placeholder="Rename the Phase"
-        )
-        rename_btn = pn.widgets.Button(
-            name="Rename", button_type="warning", align="end"
-        )
-        remove_phase_btn = pn.widgets.Button(
-            name="Remove Phase", button_type="danger", align="end"
-        )
-        subphase_accordion = pn.layout.Accordion()
-        pn.bind(
-            self.remove_phase, remove_phase_btn, part_name, part_name[-1], watch=True
-        )
-        pn.bind(
-            self.rename_phase,
-            rename_btn,
-            rename_input,
-            part_name[-1],
-            part_name,
-            watch=True,
-        )
-        pn.bind(
-            self.add_subphase,
-            subphase_add_btn,
-            subphase_name_input,
-            part_name,
-            value_row,
-            subphase_accordion,
-            watch=True,
-        )
-        col = pn.Column(
-            value_row,
-            phase_row,
-            subphase_accordion,
-            pn.layout.Divider(),
-            remove_phase_btn,
-            name=part_name[-1],
-        )
-        pn.bind(
-            self.add_value, value_input, value_add_btn, part_name, phase_row, watch=True
-        )
-        return col
-
-    def panel(self):
-        self.add_study_btn.disabled = True
-        self.study_name_input.link(
-            self.add_study_btn, callbacks={"value_input": self.state_add_phase}
-        )
-        self.add_study_btn.on_click(self.add_study_part)
-        text = "# Set up the study design \\n Here you can set up the study design. You can add study parts, phases and subphases."
-        return pn.Column(
-            pn.pane.Markdown(text),
-            self.structure_accordion,
-            pn.Row(self.study_name_input, self.add_study_btn),
-        )
-
-
 class PsychologicalPipeline:
     pipeline = None
     name = "Psychological Data"
@@ -1445,16 +1239,6 @@ SHOW_FEATURES_TEXT = "# Show Features"
 
 
 
-SALIVA_MAX_STEPS = 4
-
-ASK_FOR_FORMAT_TEXT = "# Choose the format your data is stored in"
-ASK_TO_LOAD_CONDITION_LIST_TEXT = "# Do you want to add a condition list?"
-ADD_CONDITION_LIST_TEXT = "# Add a condition list"
-LOAD_PLATE_DATA_TEXT = (
-    "# Upload Saliva Data \\n Here you can upload the saliva data. "
-    "In the following steps you can analyze the data and then download the results."
-)
-SHOW_FEATURES_TEXT = "# Show Features"
 
 from typing import Dict, List, Optional, Tuple
 
@@ -1751,7 +1535,6 @@ class PlotViewer(pn.viewable.Viewer):
 
 
 class TimesToSubject(pn.viewable.Viewer):
-
     accordion = pn.Accordion()
     subject_time_dict = param.Dict(default={})
     add_new_subject_selector = pn.widgets.Select(
@@ -2120,712 +1903,6 @@ class AskForFormat(SalivaBase):
     def panel(self):
         return self._view
 
-from ast import literal_eval
-from datetime import datetime
-from io import BytesIO, StringIO
-from typing import Tuple, Optional, Union, Sequence, Dict
-from zipfile import ZipFile
-from pathlib import Path
-
-from biopsykit.io.io import _sanitize_index_cols, _apply_index_cols
-from biopsykit.io.nilspod import _handle_counter_inconsistencies_session
-from biopsykit.io.saliva import (
-    _check_num_samples,
-    _apply_condition_list,
-    _get_id_columns,
-    _check_sample_times,
-    _get_condition_col,
-    _get_index_cols,
-)
-from biopsykit.io.sleep_analyzer import (
-    WITHINGS_RAW_DATA_SOURCES,
-    _localize_time,
-    _explode_timestamp,
-    _reindex_datetime_index,
-)
-from biopsykit.sleep.utils import split_nights
-from biopsykit.utils._datatype_validation_helper import (
-    _assert_file_extension,
-    _assert_has_columns,
-)
-from biopsykit.utils.dataframe_handling import convert_nan
-from biopsykit.utils.datatype_helper import (
-    SalivaRawDataFrame,
-    is_saliva_raw_dataframe,
-    _SalivaRawDataFrame,
-    SubjectConditionDataFrame,
-    SubjectConditionDict,
-    is_subject_condition_dict,
-    is_subject_condition_dataframe,
-    _SubjectConditionDataFrame,
-)
-from biopsykit.utils.time import tz
-
-from nilspodlib import Dataset
-from nilspodlib.utils import path_t
-from typing_extensions import Literal
-
-
-COUNTER_INCONSISTENCY_HANDLING = Literal["raise", "warn", "ignore"]
-_DATA_COL_NAMES = {"cortisol": "cortisol (nmol/l)", "amylase": "amylase (U/ml)"}
-
-
-def get_datetime_columns_of_data_frame(df: pd.DataFrame):
-    df_type = df.dtypes.rename_axis("column").to_frame("dtype").reset_index(drop=False)
-    df_type["dtype_str"] = df_type["dtype"].map(str)
-    dt_cols = df_type[df_type["dtype_str"].str.contains("datetime64")][
-        "column"
-    ].tolist()
-    if isinstance(df.index, pd.DatetimeIndex):
-        dt_cols.append("index")
-    return dt_cols
-
-
-def get_start_and_end_time(df: pd.DataFrame) -> Tuple[datetime, datetime]:
-    datetime_columns = get_datetime_columns_of_data_frame(df)
-    if "index" in datetime_columns:
-        start = pd.to_datetime(df.index.values.min())
-        end = pd.to_datetime(df.index.values.max())
-        return (start, end)
-    elif len(datetime_columns) == 1:
-        start = df[datetime_columns[0]].min()
-        end = df[datetime_columns[0]].max()
-        return (start, end)
-    return None
-
-
-def timezone_aware_to_naive(dt: datetime) -> datetime:
-    naive = datetime(
-        year=dt.year,
-        month=dt.month,
-        day=dt.day,
-        hour=dt.hour,
-        minute=dt.minute,
-        second=dt.second,
-        tzinfo=None,
-    )
-    return naive
-
-
-def _handle_counter_inconsistencies_dataset(
-    dataset: Dataset,
-    handle_counter_inconsistency: COUNTER_INCONSISTENCY_HANDLING,
-):
-    idxs_corrupted = np.where(np.diff(dataset.counter) < 1)[0]
-    # edge case: check if only last sample is corrupted. if yes, cut last sample
-    if len(idxs_corrupted) == 1 and (idxs_corrupted == len(dataset.counter) - 2):
-        dataset.cut(start=0, stop=idxs_corrupted[0], inplace=True)
-    elif len(idxs_corrupted) > 1:
-        if handle_counter_inconsistency == "raise":
-            raise ValueError(
-                "Error loading dataset. Counter not monotonously increasing!"
-            )
-        if handle_counter_inconsistency == "warn":
-            warnings.warn(
-                "Counter not monotonously increasing. This might indicate that the dataset is corrupted or "
-                "that the dataset was recorded as part of a synchronized session and might need to be loaded "
-                "using \`biopsykit.io.nilspod.load_synced_session_nilspod()\`. "
-                "Check the counter of the DataFrame manually!"
-            )
-
-
-def load_synced_session_nilspod_zip(
-    file: ZipFile,
-    datastreams: Optional[Union[str, Sequence[str]]] = None,
-    handle_counter_inconsistency: Optional[COUNTER_INCONSISTENCY_HANDLING] = "raise",
-    **kwargs,
-) -> Tuple[pd.DataFrame, float]:
-
-    nilspod_files = list(
-        filter(lambda file_name: file_name.endswith(".bin"), file.namelist())
-    )
-    if len(nilspod_files) == 0:
-        raise ValueError("No NilsPod files found in Zipfile!")
-
-    kwargs.setdefault("tz", kwargs.pop("timezone", tz))
-    session = SyncedSessionAdapted.from_folder_path(file, **kwargs)
-
-    # Ab hier standard
-    session.align_to_syncregion(inplace=True)
-
-    _handle_counter_inconsistencies_session(session, handle_counter_inconsistency)
-    if isinstance(datastreams, str):
-        datastreams = [datastreams]
-
-    # convert dataset to dataframe and localize timestamp
-    df = session.data_as_df(datastreams, index="local_datetime", concat_df=True)
-    df.index.name = "time"
-    if len(set(session.info.sampling_rate_hz)) > 1:
-        raise ValueError(
-            f"Datasets in the sessions have different sampling rates! Got: {session.info.sampling_rate_hz}."
-        )
-    fs = session.info.sampling_rate_hz[0]
-    return df, fs
-
-
-def load_dataset_nilspod_zip(
-    zip_file: Optional[ZipFile] = None,
-    file_path: Optional[str] = None,
-    dataset: Optional[Dataset] = None,
-    datastreams: Optional[Union[str, Sequence[str]]] = None,
-    handle_counter_inconsistency: Optional[COUNTER_INCONSISTENCY_HANDLING] = "raise",
-    **kwargs,
-) -> Tuple[pd.DataFrame, float]:
-    if zip_file is not None:
-        _assert_file_extension(file_path, ".bin")
-        kwargs.setdefault("tz", kwargs.pop("timezone", tz))
-        kwargs.setdefault("legacy_support", "resolve")
-        dataset = NilsPodAdapted.from_bin_file(
-            BytesIO(zip_file.read(file_path)), **kwargs
-        )
-
-    if file_path is None and dataset is None:
-        raise ValueError(
-            "Either 'file_path' or 'dataset' must be supplied as parameter!"
-        )
-
-    _handle_counter_inconsistencies_dataset(dataset, handle_counter_inconsistency)
-
-    if isinstance(datastreams, str):
-        datastreams = [datastreams]
-
-    # convert dataset to dataframe and localize timestamp
-    df = dataset.data_as_df(datastreams, index="local_datetime")
-    df.index.name = "time"
-    return df, dataset.info.sampling_rate_hz
-
-
-def load_folder_nilspod_zip(
-    file: ZipFile, phase_names: Optional[Sequence[str]] = None, **kwargs
-) -> Tuple[Dict[str, pd.DataFrame], float]:
-    dataset_list = list(
-        filter(lambda file_name: file_name.endswith(".bin"), file.namelist())
-    )
-    if len(dataset_list) == 0:
-        raise ValueError(f"No NilsPod files found in Zipfile!")
-    if phase_names is None:
-        phase_names = [f"Part{i}" for i in range(len(dataset_list))]
-
-    if len(phase_names) != len(dataset_list):
-        raise ValueError(
-            f"Number of phases does not match number of datasets in the folder! "
-            f"Expected {len(dataset_list)}, got {len(phase_names)}."
-        )
-
-    dataset_list = [
-        load_dataset_nilspod_zip(file_path=dataset_path, zip_file=file, **kwargs)
-        for dataset_path in dataset_list
-    ]
-
-    # check if sampling rate is equal for all datasets in folder
-    fs_list = [fs for df, fs in dataset_list]
-
-    if len(set(fs_list)) > 1:
-        raise ValueError(
-            f"Datasets in the sessions have different sampling rates! Got: {fs_list}."
-        )
-    fs = fs_list[0]
-
-    dataset_dict = {phase: df for phase, (df, fs) in zip(phase_names, dataset_list)}
-    return dataset_dict, fs
-
-
-def _load_dataframe(
-    filepath_or_buffer: Path | bytes,
-    file_name: Optional[str] = None,
-    **kwargs,
-):
-    if type(filepath_or_buffer) is not bytes:
-        if filepath_or_buffer.suffix in [".csv"]:
-            return pd.read_csv(filepath_or_buffer, **kwargs)
-        return pd.read_excel(filepath_or_buffer, **kwargs)
-    else:
-        if file_name is None:
-            raise ValueError(
-                "If 'file' is of type BytesIO, 'file_name' must be supplied as parameter!"
-            )
-        if file_name.endswith(".csv"):
-            return pd.read_csv(StringIO(filepath_or_buffer.decode("utf8")), **kwargs)
-        return pd.read_excel(filepath_or_buffer, **kwargs)
-
-
-def load_questionnaire_data(
-    file: bytes | path_t,
-    file_name: Optional[str] = None,
-    subject_col: Optional[str] = None,
-    condition_col: Optional[str] = None,
-    additional_index_cols: Optional[Union[str, Sequence[str]]] = None,
-    replace_missing_vals: Optional[bool] = True,
-    remove_nan_rows: Optional[bool] = True,
-    sheet_name: Optional[Union[str, int]] = 0,
-    **kwargs,
-) -> pd.DataFrame:
-    if type(file) == bytes:
-        file_path = Path(file_name)
-    else:
-        file_path = Path(file)
-        file = file_path
-    _assert_file_extension(file_path, expected_extension=[".xls", ".xlsx", ".csv"])
-    if file_path.suffix != ".csv":
-        kwargs["sheet_name"] = sheet_name
-    data = _load_dataframe(file, file_name, **kwargs)
-    data, index_cols = _sanitize_index_cols(
-        data, subject_col, condition_col, additional_index_cols
-    )
-    data = _apply_index_cols(data, index_cols=index_cols)
-    if replace_missing_vals:
-        data = convert_nan(data)
-    if remove_nan_rows:
-        data = data.dropna(how="all")
-    return data
-
-
-def load_saliva_plate(
-    file: pd.DataFrame | path_t,
-    saliva_type: str,
-    sample_id_col: Optional[str] = None,
-    data_col: Optional[str] = None,
-    id_col_names: Optional[Sequence[str]] = None,
-    regex_str: Optional[str] = None,
-    sample_times: Optional[Sequence[int]] = None,
-    condition_list: Optional[Union[Sequence, Dict[str, Sequence], pd.Index]] = None,
-    **kwargs,
-) -> SalivaRawDataFrame:
-
-    if type(file) != pd.DataFrame:
-        file = Path(file)
-        _assert_file_extension(file, (".xls", ".xlsx"))
-
-    # TODO add remove_nan option (all or any)
-    if regex_str is None:
-        regex_str = r"(Vp\d+) (S\w)"
-
-    if sample_id_col is None:
-        sample_id_col = "sample ID"
-
-    if data_col is None:
-        data_col = _DATA_COL_NAMES[saliva_type]
-
-    if type(file) == pd.DataFrame:
-        df_saliva = file[[sample_id_col, data_col]].copy()
-    else:
-        df_saliva = pd.read_excel(
-            file, skiprows=2, usecols=[sample_id_col, data_col], **kwargs
-        )
-    cols = df_saliva[sample_id_col].str.extract(regex_str).copy()
-    id_col_names = _get_id_columns(id_col_names, cols)
-
-    df_saliva[id_col_names] = cols
-
-    df_saliva = df_saliva.drop(columns=[sample_id_col], errors="ignore")
-    df_saliva = df_saliva.rename(columns={data_col: saliva_type})
-    df_saliva = df_saliva.set_index(id_col_names)
-
-    if condition_list is not None:
-        df_saliva = _apply_condition_list(df_saliva, condition_list)
-
-    num_subjects = len(df_saliva.index.get_level_values("subject").unique())
-
-    _check_num_samples(len(df_saliva), num_subjects)
-
-    if sample_times:
-        _check_sample_times(len(df_saliva), num_subjects, sample_times)
-        df_saliva["time"] = np.array(sample_times * num_subjects)
-
-    try:
-        df_saliva[saliva_type] = df_saliva[saliva_type].astype(float)
-    except ValueError as e:
-        raise ValueError(
-            """Error converting all saliva values into numbers: '{}'
-            Please check your saliva values whether there is any text etc. in the column '{}'
-            and delete the values or replace them by NaN!""".format(
-                e, data_col
-            )
-        ) from e
-
-    is_saliva_raw_dataframe(df_saliva, saliva_type)
-
-    return _SalivaRawDataFrame(df_saliva)
-
-
-def load_saliva_wide_format(
-    file: pd.DataFrame | path_t,
-    saliva_type: str,
-    subject_col: Optional[str] = None,
-    condition_col: Optional[str] = None,
-    additional_index_cols: Optional[Union[str, Sequence[str]]] = None,
-    sample_times: Optional[Sequence[int]] = None,
-    **kwargs,
-) -> SalivaRawDataFrame:
-    """Load saliva data that is in wide-format from csv file.
-
-    It will return a \`SalivaRawDataFrame\`, a long-format dataframe that complies with BioPsyKit's naming convention,
-    i.e., the subject ID index will be named \`\`subject\`\`, the sample index will be names \`\`sample\`\`,
-    and the value column will be named after the saliva biomarker type.
-
-    Parameters
-    ----------
-    file_path: :class:\`~pathlib.Path\` or str
-        path to file
-    saliva_type: str
-        saliva type to load from file. Example: \`\`cortisol\`\`
-    subject_col: str, optional
-        name of column containing subject IDs or \`\`None\`\` to use the default column name \`\`subject\`\`.
-        According to BioPsyKit's convention, the subject ID column is expected to have the name \`\`subject\`\`.
-        If the subject ID column in the file has another name, the column will be renamed in the dataframe
-        returned by this function. Default: \`\`None\`\`
-    condition_col : str, optional
-        name of the column containing condition assignments or \`\`None\`\` if no conditions are present.
-        According to BioPsyKit's convention, the condition column is expected to have the name \`\`condition\`\`.
-        If the condition column in the file has another name, the column will be renamed in the dataframe
-        returned by this function. Default: \`\`None\`\`
-    additional_index_cols : str or list of str, optional
-        additional index levels to be added to the dataframe, e.g., "day" index. Can either be a string or a list
-        strings to indicate column name(s) that should be used as index level(s),
-        or \`\`None\`\` for no additional index levels. Default: \`\`None\`\`
-    sample_times: list of int, optional
-        times at which saliva samples were collected or \`\`None\`\` if no sample times should be specified.
-        Default: \`\`None\`\`
-    **kwargs
-        Additional parameters that are passed to :func:\`pandas.read_csv\` or :func:\`pandas.read_excel\`
-
-    Returns
-    -------
-    data : :class:\`~biopsykit.utils.datatype_helper.SalivaRawDataFrame\`
-        saliva data in \`SalivaRawDataFrame\` format
-
-    Raises
-    ------
-    :exc:\`~biopsykit.utils.exceptions.FileExtensionError\`
-        if file is no csv or Excel file
-
-    """
-    # ensure pathlib
-    if type(file) != pd.DataFrame:
-        file = Path(file)
-        _assert_file_extension(file, (".xls", ".xlsx"))
-        data = _load_dataframe(file, **kwargs)
-    else:
-        data = file
-
-    if subject_col is None:
-        subject_col = "subject"
-
-    _assert_has_columns(data, [[subject_col]])
-
-    if subject_col != "subject":
-        # rename column
-        data = data.rename(columns={subject_col: "subject"})
-        subject_col = "subject"
-
-    index_cols = [subject_col]
-
-    data, condition_col = _get_condition_col(data, condition_col)
-
-    index_cols = _get_index_cols(condition_col, index_cols, additional_index_cols)
-    data = _apply_index_cols(data, index_cols=index_cols)
-
-    num_subjects = len(data)
-    data.columns = pd.MultiIndex.from_product(
-        [[saliva_type], data.columns], names=[None, "sample"]
-    )
-    data = data.stack()
-
-    _check_num_samples(len(data), num_subjects)
-
-    if sample_times is not None:
-        _check_sample_times(len(data), num_subjects, sample_times)
-        data["time"] = np.array(sample_times * num_subjects)
-
-    is_saliva_raw_dataframe(data, saliva_type)
-
-    return _SalivaRawDataFrame(data)
-
-
-def load_subject_condition_list(
-    file: bytes | path_t,
-    file_name: Optional[str] = None,
-    subject_col: Optional[str] = None,
-    condition_col: Optional[str] = None,
-    return_dict: Optional[bool] = False,
-    **kwargs,
-) -> Union[SubjectConditionDataFrame, SubjectConditionDict]:
-    """Load subject condition assignment from file.
-
-    This function can be used to load a file that contains the assignment of subject IDs to study conditions.
-    It will return a dataframe or a dictionary that complies with BioPsyKit's naming convention, i.e.,
-    the subject ID index will be named \`\`subject\`\` and the condition column will be named \`\`condition\`\`.
-
-    Parameters
-    ----------
-    file_path : :class:\`~pathlib.Path\` or str
-        path to time log file. Must either be an Excel or csv file
-    subject_col : str, optional
-        name of column containing subject IDs or \`\`None\`\` to use default column name \`\`subject\`\`.
-        According to BioPsyKit's convention, the subject ID column is expected to have the name \`\`subject\`\`.
-        If the subject ID column in the file has another name, the column will be renamed in the dataframe
-        returned by this function.
-    condition_col : str, optional
-        name of column containing condition assignments or \`\`None\`\` to use default column name \`\`condition\`\`.
-        According to BioPsyKit's convention, the condition column is expected to have the name \`\`condition\`\`.
-        If the condition column in the file has another name, the column will be renamed in the dataframe
-        returned by this function.
-    return_dict : bool, optional
-        whether to return a dict with subject IDs per condition (\`\`True\`\`) or a dataframe (\`\`False\`\`).
-        Default: \`\`False\`\`
-    **kwargs
-        Additional parameters that are passed tos :func:\`pandas.read_csv\` or :func:\`pandas.read_excel\`
-
-    Returns
-    -------
-    :class:\`~biopsykit.utils.datatype_helper.SubjectConditionDataFrame\` or
-    :class:\`~biopsykit.utils.datatype_helper.SubjectConditionDict\`
-        a standardized pandas dataframe with subject IDs and condition assignments (if \`\`return_dict\`\` is \`\`False\`\`) or
-        a standardized dict with subject IDs per group (if \`\`return_dict\`\` is \`\`True\`\`)
-
-    Raises
-    ------
-    :exc:\`~biopsykit.utils.exceptions.FileExtensionError\`
-        if file is not a csv or Excel file
-    :exc:\`~biopsykit.utils.exceptions.ValidationError\`
-        if result is not a :class:\`~biopsykit.utils.datatype_helper.SubjectConditionDataFrame\` or a
-        :class:\`~biopsykit.utils.datatype_helper.SubjectConditionDict\`
-
-    """
-    # ensure pathlib
-    if type(file) == bytes:
-        file_path = Path(file_name)
-    else:
-        file_path = Path(file)
-        file = file_path
-    _assert_file_extension(file_path, expected_extension=[".xls", ".xlsx", ".csv"])
-
-    data = _load_dataframe(file, file_name, **kwargs)
-
-    if subject_col is None:
-        subject_col = "subject"
-
-    if condition_col is None:
-        condition_col = "condition"
-
-    _assert_has_columns(data, [[subject_col, condition_col]])
-
-    if subject_col != "subject":
-        # rename column
-        subject_col = {subject_col: "subject"}
-        data = data.rename(columns=subject_col)
-        subject_col = "subject"
-
-    if condition_col != "condition":
-        # rename column
-        condition_col = {condition_col: "condition"}
-        data = data.rename(columns=condition_col)
-        condition_col = "condition"
-    data = data.set_index(subject_col)
-
-    if return_dict:
-        data = data.groupby(condition_col).groups
-        is_subject_condition_dict(data)
-        return data
-    is_subject_condition_dataframe(data)
-    return _SubjectConditionDataFrame(data)
-
-
-# def load_saliva_wide_format(
-#     file: bytes | path_t,
-#     saliva_type: str,
-#     file_name: Optional[str] = None,
-#     subject_col: Optional[str] = None,
-#     condition_col: Optional[str] = None,
-#     additional_index_cols: Optional[Union[str, Sequence[str]]] = None,
-#     sample_times: Optional[Sequence[int]] = None,
-#     **kwargs,
-# ) -> SalivaRawDataFrame:
-#     """Load saliva data that is in wide-format from csv file.
-#
-#     It will return a \`SalivaRawDataFrame\`, a long-format dataframe that complies with BioPsyKit's naming convention,
-#     i.e., the subject ID index will be named \`\`subject\`\`, the sample index will be names \`\`sample\`\`,
-#     and the value column will be named after the saliva biomarker type.
-#
-#     Parameters
-#     ----------
-#     file_path: :class:\`~pathlib.Path\` or str
-#         path to file
-#     saliva_type: str
-#         saliva type to load from file. Example: \`\`cortisol\`\`
-#     subject_col: str, optional
-#         name of column containing subject IDs or \`\`None\`\` to use the default column name \`\`subject\`\`.
-#         According to BioPsyKit's convention, the subject ID column is expected to have the name \`\`subject\`\`.
-#         If the subject ID column in the file has another name, the column will be renamed in the dataframe
-#         returned by this function. Default: \`\`None\`\`
-#     condition_col : str, optional
-#         name of the column containing condition assignments or \`\`None\`\` if no conditions are present.
-#         According to BioPsyKit's convention, the condition column is expected to have the name \`\`condition\`\`.
-#         If the condition column in the file has another name, the column will be renamed in the dataframe
-#         returned by this function. Default: \`\`None\`\`
-#     additional_index_cols : str or list of str, optional
-#         additional index levels to be added to the dataframe, e.g., "day" index. Can either be a string or a list
-#         strings to indicate column name(s) that should be used as index level(s),
-#         or \`\`None\`\` for no additional index levels. Default: \`\`None\`\`
-#     sample_times: list of int, optional
-#         times at which saliva samples were collected or \`\`None\`\` if no sample times should be specified.
-#         Default: \`\`None\`\`
-#     **kwargs
-#         Additional parameters that are passed to :func:\`pandas.read_csv\` or :func:\`pandas.read_excel\`
-#
-#     Returns
-#     -------
-#     data : :class:\`~biopsykit.utils.datatype_helper.SalivaRawDataFrame\`
-#         saliva data in \`SalivaRawDataFrame\` format
-#
-#     Raises
-#     ------
-#     :exc:\`~biopsykit.utils.exceptions.FileExtensionError\`
-#         if file is no csv or Excel file
-#
-#     """
-#     # ensure pathlib
-#     if type(file) == bytes:
-#         file_path = Path(file_name)
-#     else:
-#         file_path = Path(file)
-#         file = file_path
-#     _assert_file_extension(file_path, expected_extension=[".xls", ".xlsx", ".csv"])
-#     data = _load_dataframe(file, file_name, **kwargs)
-#
-#     if subject_col is None:
-#         subject_col = "subject"
-#
-#     _assert_has_columns(data, [[subject_col]])
-#
-#     if subject_col != "subject":
-#         # rename column
-#         data = data.rename(columns={subject_col: "subject"})
-#         subject_col = "subject"
-#
-#     index_cols = [subject_col]
-#
-#     data, condition_col = _get_condition_col(data, condition_col)
-#
-#     index_cols = _get_index_cols(condition_col, index_cols, additional_index_cols)
-#     data = _apply_index_cols(data, index_cols=index_cols)
-#
-#     num_subjects = len(data)
-#     data.columns = pd.MultiIndex.from_product(
-#         [[saliva_type], data.columns], names=[None, "sample"]
-#     )
-#     data = data.stack()
-#
-#     _check_num_samples(len(data), num_subjects)
-#
-#     if sample_times is not None:
-#         _check_sample_times(len(data), num_subjects, sample_times)
-#         data["time"] = np.array(sample_times * num_subjects)
-#
-#     is_saliva_raw_dataframe(data, saliva_type)
-#
-#     return _SalivaRawDataFrame(data)
-
-
-def load_withings_sleep_analyzer_raw_file(
-    file: bytes | path_t,
-    data_source: str,
-    timezone: Optional[Union[type(datetime.tzinfo), str]] = None,
-    split_into_nights: Optional[bool] = True,
-    file_name: Optional[str] = None,
-) -> Union[pd.DataFrame, Dict[str, pd.DataFrame]]:
-    """Load single Withings Sleep Analyzer raw data file and convert into time-series data.
-
-    Parameters
-    ----------
-    file : :class:\`~pathlib.Path\` or str
-        path to file
-    data_source : str
-        data source of file specified by \`\`file_path\`\`. Must be one of
-        ['heart_rate', 'respiration_rate', 'sleep_state', 'snoring'].
-    timezone : str or :class:\`datetime.tzinfo\`, optional
-        timezone of recorded data, either as string or as tzinfo object.
-        Default: 'Europe/Berlin'
-    split_into_nights : bool, optional
-        whether to split the dataframe into the different recording nights (and return a dictionary of dataframes)
-        or not.
-        Default: \`\`True\`\`
-
-    Returns
-    -------
-    :class:\`~pandas.DataFrame\` or dict of such
-        dataframe (or dict of dataframes, if \`\`split_into_nights\`\` is \`\`True\`\`) with Sleep Analyzer data
-
-    Raises
-    ------
-    ValueError
-        if unsupported data source was passed
-    \`~biopsykit.utils.exceptions.FileExtensionError\`
-        if \`\`file_path\`\` is not a csv file
-    \`~biopsykit.utils.exceptions.ValidationError\`
-        if file does not have the required columns \`\`start\`\`, \`\`duration\`\`, \`\`value\`\`
-
-    """
-    if data_source not in WITHINGS_RAW_DATA_SOURCES.values():
-        raise ValueError(
-            "Unsupported data source {}! Must be one of {}.".format(
-                data_source, list(WITHINGS_RAW_DATA_SOURCES.values())
-            )
-        )
-
-    if type(file) == bytes:
-        file_path = Path(file_name)
-    else:
-        file_path = Path(file)
-        file = file_path
-
-    file_path = Path(file_path)
-    _assert_file_extension(file_path, ".csv")
-
-    data = _load_dataframe(file, file_name)
-
-    _assert_has_columns(data, [["start", "duration", "value"]])
-
-    if timezone is None:
-        timezone = tz
-
-    # convert string timestamps to datetime
-    data["start"] = pd.to_datetime(data["start"])
-    # sort index
-    data = data.set_index("start").sort_index()
-    # drop duplicate index values
-    data = data.loc[~data.index.duplicated()]
-
-    # convert it into the right time zone
-    data = data.groupby("start", group_keys=False).apply(
-        _localize_time, timezone=timezone
-    )
-    # convert strings of arrays to arrays
-    data["duration"] = data["duration"].apply(literal_eval)
-    data["value"] = data["value"].apply(literal_eval)
-
-    # rename index
-    data.index.name = "time"
-    # explode data and apply timestamp explosion to groups
-    data_explode = data.apply(pd.Series.explode)
-    data_explode = data_explode.groupby("time", group_keys=False).apply(
-        _explode_timestamp
-    )
-    # rename the value column
-    data_explode.columns = [data_source]
-    # convert dtypes from object into numerical values
-    data_explode = data_explode.astype(int)
-    # drop duplicate index values
-    data_explode = data_explode.loc[~data_explode.index.duplicated()]
-
-    if split_into_nights:
-        data_explode = split_nights(data_explode)
-        data_explode = {
-            key: _reindex_datetime_index(d) for key, d in data_explode.items()
-        }
-    else:
-        data_explode = _reindex_datetime_index(data_explode)
-    return data_explode
 
 
 class AskToLoadConditionList(SalivaBase):
@@ -4075,19 +3152,6 @@ class ChooseRecordingDevice(SleepBase):
 
 
 
-class ZipFolder(SleepBase):
-    def __init__(self, **params):
-        params["HEADER_TEXT"] = ZIP_OR_FOLDER_TEXT
-        super().__init__(**params)
-        self.update_step(3)
-        self.update_text(ZIP_OR_FOLDER_TEXT)
-        self._view = pn.Column(self.header)
-
-    def panel(self):
-        return self._view
-
-
-
 class SetSleepDataParameters(SleepBase):
     parameter_column = pn.Column()
 
@@ -4148,146 +3212,6 @@ class SetSleepDataParameters(SleepBase):
             self.parameter_column.__setitem__(
                 0, self.get_parameter_column_for_selected_device()
             )
-        return self._view
-from io import BytesIO, StringIO
-from zipfile import ZipFile
-
-
-
-
-class UploadSleepData(SleepBase):
-    fs = param.Dynamic(default=None)
-    ready = param.Boolean(default=False)
-    accepted_file_types = {
-        "Polysomnography": ".edf, .zip",
-        "Other IMU Device": ".bin, .zip",
-        "Withings": ".csv, .zip",
-    }
-    upload_data = pn.widgets.FileInput(
-        name="Upload sleep data",
-        multiple=False,
-    )
-    next_page = param.Selector(
-        default="Process Data",
-        objects=["Process Data", "Convert Acc to g"],
-    )
-    filename = param.String(default="")
-
-    def __init__(self, **params):
-        params["HEADER_TEXT"] = UPLOAD_SLEEP_DATA_TEXT
-        super().__init__(**params)
-        self.update_step(4)
-        self.update_text(UPLOAD_SLEEP_DATA_TEXT)
-        self.upload_data.link(self, callbacks={"filename": self.filename_changed})
-        self._view = pn.Column(self.header, self.upload_data)
-
-    def filename_changed(self, _, event):
-        self.filename = event.new
-        if self.filename is None or self.filename == "" or "." not in self.filename:
-            return
-        self.process_data()
-
-    def process_data(self):
-        try:
-            if self.upload_data.value is None:
-                self.ready = False
-                app.notifications.error("Please upload a file")
-            elif self.selected_device == "Polysomnography":
-                self.parse_psg()
-            elif self.selected_device == "Other IMU Device":
-                self.parse_other_imu()
-            elif self.selected_device == "Withings":
-                self.parse_withings()
-            else:
-                app.notifications.error("Please choose a device")
-                self.ready = False
-                return
-            self.ready = True
-        except Exception as e:
-            print(f"Exception in upload_sleep_data: {e}")
-            self.ready = False
-
-    def parse_psg(self):
-        if self.upload_data.filename.endswith(".zip"):
-            app.notifications.error("Not yet implemented")
-            self.ready = False
-        elif self.upload_data.filename.endswith(".edf"):
-            app.notifications.error("Not yet implemented")
-            self.ready = False
-        else:
-            app.notifications.error("Please upload a zip or edf file")
-            self.ready = False
-
-    def parse_other_imu(self):
-        if self.upload_data.filename.endswith(".bin"):
-            dataset = NilsPodAdapted.from_bin_file(
-                filepath_or_buffer=BytesIO(self.upload_data.value),
-                legacy_support="resolve",
-                **self.selected_parameters[self.selected_device],
-            )
-            df, _ = bp.io.nilspod.load_dataset_nilspod(dataset=dataset)
-            self.add_data(df, self.upload_data.filename)
-        elif self.upload_data.filename.endswith(".csv"):
-            string_io = StringIO(self.upload_data.value.decode("utf-8"))
-            dataset = pd.read_csv(string_io)
-            self.add_data(dataset, self.upload_data.filename)
-        elif self.upload_data.filename.endswith(".zip"):
-            input_zip = ZipFile(BytesIO(self.upload_data.value))
-            datasets = []
-            list_of_files = input_zip.infolist()
-            for file in list_of_files:
-                if file.filename.endswith(".bin"):
-                    dataset = NilsPodAdapted.from_bin_file(
-                        filepath_or_buffer=BytesIO(input_zip.read(file)),
-                        **self.selected_parameters[self.selected_device],
-                    )
-                    datasets.append(dataset)
-                elif file.filename.endswith(".csv"):
-                    string_io = StringIO(str(input_zip.open(file)))
-                    dataset = pd.read_csv(string_io)
-                    datasets.append(dataset)
-            self.add_data(datasets, self.upload_data.filename)
-        self.ready = True
-        app.notifications.success("Successfully loaded data")
-
-    def parse_withings(self):
-        if self.upload_data.filename.endswith(".zip"):
-            app.notifications.error("Not yet implemented")
-            self.ready = False
-            input_zip = ZipFile(BytesIO(self.upload_data.value))
-            datasets = []
-            list_of_files = input_zip.infolist()
-            for file in list_of_files:
-                if file.filename.endswith(".csv"):
-                    dataset = self.load_withings(
-                        file=bytes(input_zip.read(file)),
-                        filename=file.filename,
-                    )
-                    datasets.append(dataset)
-            self.add_data(datasets, self.upload_data.filename)
-        elif self.upload_data.filename.endswith(".csv"):
-            dataset = self.load_withings(
-                file=bytes(self.upload_data.value), filename=self.upload_data.filename
-            )
-            self.add_data(dataset, self.upload_data.filename)
-        self.ready = True
-        app.notifications.success("Successfully loaded data")
-
-    def load_withings(self, file: bytes, filename):
-        dataset = load_withings_sleep_analyzer_raw_file(
-            file=file,
-            file_name=filename,
-            **self.selected_parameters[self.selected_device]
-            # data_source=self.selected_parameters["data_source"],
-            # timezone=self.selected_parameters["timezone"],
-            # split_into_nights=self.selected_parameters["split_into_nights"],
-        )
-        return dataset
-
-    def panel(self):
-        if self.selected_device == "Other IMU Device":
-            self.next_page = "Convert Acc to g"
-        self.upload_data.accept = self.accepted_file_types[self.selected_device]
         return self._view
 
 
@@ -4470,12 +3394,6 @@ WELCOME_TEXT = (
 
 
 
-WELCOME_TEXT = (
-    "# Welcome to the BioPsyKit Dashboard \\n\\n"
-    "## Here you can analyse your Data using the BioPsyKit without any manual programming. \\n"
-    "Please select below one of the Signals you want to analyse. "
-    "The corresponding guide will help you to get the best out of your data."
-)
 
 
 from biopsykit.protocols import CFT
@@ -5194,7 +4112,1012 @@ class SelectCFTSheet(PhysiologicalBase):
     def panel(self):
         self.select_cft_sheets.options = list(self.data.keys())
         return self._view
+from biopsykit.signals.ecg import EcgProcessor
+"""Module providing functions for plotting ECG data."""
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
+
+from biopsykit.signals.ecg.ecg import _assert_ecg_input
+from biopsykit.utils.array_handling import sanitize_input_1d
+from biopsykit.utils.datatype_helper import EcgResultDataFrame
+from fau_colors import cmaps, colors_all
+from neurokit2.hrv.hrv_frequency import _hrv_frequency_show
+from neurokit2.hrv.hrv_utils import _hrv_get_rri
+
+
+if TYPE_CHECKING:
+    from biopsykit.signals.ecg import EcgProcessor
+
+__all__ = [
+    "ecg_plot",
+]
+
+# TODO add signal plot method for all phases
+
+
+def ecg_plot(
+    ecg_processor: Optional["EcgProcessor"] = None,
+    key: Optional[str] = None,
+    ecg_signal: Optional[pd.DataFrame] = None,
+    heart_rate: Optional[pd.DataFrame] = None,
+    sampling_rate: Optional[int] = 256,
+    plot_ecg_signal: Optional[bool] = True,
+    plot_distribution: Optional[bool] = True,
+    plot_individual_beats: Optional[bool] = True,
+    **kwargs,
+):
+    """Plot ECG processing results.
+
+    By default, this plot consists of four subplots:
+
+    * \`top left\`: course of ECG signal plot with signal quality indicator,
+      detected R peaks and R peaks marked as outlier
+    * \`bottom left\`: course of heart rate (tachogram)
+    * \`top right\`: individual heart beats overlaid on top of each other
+    * \`bottom right\`: heart rate distribution (histogram)
+
+
+    To use this function, either simply pass an :class:\`~biopsykit.signals.ecg.EcgProcessor\` object together with
+    a \`\`key\`\` indicating which phase needs to be processed should be processed or the two dataframes \`\`ecg_signal\`\`
+    and \`\`heart_rate\`\` resulting from :meth:\`~biopsykit.signals.ecg.EcgProcessor.ecg_process()\`.
+
+
+    Parameters
+    ----------
+    ecg_processor : :class:\`~biopsykit.signals.ecg.EcgProcessor\`, optional
+        \`\`EcgProcessor\`\` object. If this argument is supplied, the \`\`key\`\` argument needs to be supplied as well.
+    key : str, optional
+        Dictionary key of the phase to process. Needed when \`\`ecg_processor\`\` is passed as argument.
+    ecg_signal : :class:\`~biopsykit.utils.datatype_helper.EcgResultDataFrame\`, optional
+        Dataframe with processed ECG signal. Output from :meth:\`~biopsykit.signals.ecg.EcgProcessor.ecg_process()\`.
+    heart_rate : :class:\`~pandas.DataFrame\`, optional
+        Dataframe with heart rate output. Output from :meth:\`~biopsykit.signals.ecg.EcgProcessor.ecg_process()\`.
+    sampling_rate : float, optional
+        Sampling rate of recorded data in Hz. Not needed if \`\`ecg_processor\`\` is supplied as parameter.
+        Default: 256
+    plot_ecg_signal : bool, optional
+        Whether to plot the cleaned ECG signal in a subplot or not. Default: \`\`True\`\`
+    plot_distribution : bool, optional
+        Whether to plot the heart rate distribution in a subplot or not. Default: \`\`True\`\`
+    plot_individual_beats : bool, optional
+        Whether to plot the individual heart beats in a subplot or not. Default: \`\`True\`\`
+    **kwargs
+        Additional parameters to configure the plot. Parameters include:
+
+        * \`\`figsize\`\`: Figure size
+        * \`\`title\`\`: Optional name to add to plot title (after "Electrocardiogram (ECG)")
+        * \`\`legend_loc\`\`: Location of legend in plot. Passed as \`loc\` parameter to :meth:\`matplotlib.axes.Axes.legend\`.
+        * \`\`legend_fontsize\`\`: Fontsize of legend text. Passed as \`fontsize\` parameter to
+          :meth:\`matplotlib.axes.Axes.legend\`.
+
+
+    Returns
+    -------
+    fig : :class:\`~matplotlib.figure.Figure\`
+        Figure object
+    axs : list of :class:\`~matplotlib.axes.Axes\`
+        list of subplot axes objects
+
+
+    See Also
+    --------
+    :func:\`~biopsykit.signals.ecg.plotting.hr_plot\`
+        plot heart rate only
+    :func:\`~biopsykit.signals.ecg.plotting.hr_distribution_plot\`
+        plot heart rate distribution only
+    :func:\`~biopsykit.signals.ecg.plotting.individual_beats_plot\`
+        plot individual beats only
+    :func:\`~biopsykit.signals.ecg.plotting.hrv_plot\`
+        plot heart rate variability
+
+    """
+    _assert_ecg_input(ecg_processor, key, ecg_signal, heart_rate)
+    if ecg_processor is not None:
+        ecg_signal = ecg_processor.ecg_result[key]
+        heart_rate = ecg_processor.heart_rate[key]
+        sampling_rate = ecg_processor.sampling_rate
+
+    sns.set_palette(cmaps.faculties)
+
+    title = kwargs.get("title", None)
+    # _set_plt_rcparams(ecg_signal)
+
+    # Prepare figure and set axes
+    # fig = plt.figure(figsize=kwargs.get("figsize"), constrained_layout=False)
+    # axs = _get_ecg_plot_specs(
+    #     fig, plot_ecg_signal, plot_individual_beats, plot_distribution
+    # )
+    # _ecg_plot_set_title(fig, title)
+
+    # plt.subplots_adjust(hspace=0.3, wspace=0.1)
+
+    peaks = np.where(ecg_signal["ECG_R_Peaks"] == 1)[0]
+    outlier = np.array([])
+    if "R_Peak_Outlier" in ecg_signal:
+        outlier = np.where(ecg_signal["R_Peak_Outlier"] == 1)[0]
+
+    peaks = np.setdiff1d(peaks, outlier)
+
+    if plot_ecg_signal:
+        plot = _ecg_plot(ecg_signal, peaks, outlier, **kwargs)
+        return plot
+    # # Plot heart rate: plot outlier only if no ECG signal is plotted
+    # hr_plot(
+    #     heart_rate,
+    #     plot_outlier=not plot_ecg_signal,
+    #     outlier=ecg_signal.index[outlier],
+    #     ax=axs["hr"],
+    # )
+    # axs["hr"].set_xlabel("Time")
+    #
+    # # Plot individual heart beats
+    # if plot_individual_beats:
+    #     individual_beats_plot(ecg_signal, peaks, sampling_rate, ax=axs["beats"])
+    #
+    # # Plot heart rate distribution
+    # if plot_distribution:
+    #     hr_distribution_plot(heart_rate, ax=axs["dist"])
+    #
+    # fig.tight_layout()
+    # return fig, list(axs.values())
+
+
+# def _set_plt_rcparams(ecg_signal: pd.DataFrame):
+#     if isinstance(ecg_signal.index, pd.DatetimeIndex):
+#         plt.rcParams["timezone"] = ecg_signal.index.tz.zone
+#     plt.rcParams["mathtext.default"] = "regular"
+
+
+# def _ecg_plot_set_title(fig: plt.Figure, title: str):
+#     if title:
+#         fig.suptitle(f"Electrocardiogram (ECG) - {title}", fontweight="bold")
+#     else:
+#         fig.suptitle("Electrocardiogram (ECG)", fontweight="bold")
+
+
+# def _get_ecg_plot_specs(  # pylint:disable=too-many-branches
+#     fig: Figure,
+#     plot_ecg_signal: bool,
+#     plot_individual_beats: bool,
+#     plot_distribution: bool,
+# ) -> Dict[str, Axes]:
+#     if plot_individual_beats or plot_distribution:
+#         spec = gs.GridSpec(2, 2, width_ratios=[3, 1])
+#         if plot_ecg_signal:
+#             axs = {
+#                 "ecg": fig.add_subplot(spec[0, :-1]),
+#                 "hr": fig.add_subplot(spec[1, :-1]),
+#             }
+#         else:
+#             axs = {"hr": fig.add_subplot(spec[:, :-1])}
+#         if plot_distribution and plot_individual_beats:
+#             axs["beats"] = fig.add_subplot(spec[0, -1])
+#             axs["dist"] = fig.add_subplot(spec[1, -1])
+#         elif plot_individual_beats:
+#             axs["beats"] = fig.add_subplot(spec[:, -1])
+#         elif plot_distribution:
+#             axs["dist"] = fig.add_subplot(spec[:, -1])
+#     elif plot_ecg_signal:
+#         axs = {"ecg": fig.add_subplot(2, 1, 1), "hr": fig.add_subplot(2, 1, 2)}
+#     else:
+#         axs = {"hr": fig.add_subplot(1, 1, 1)}
+#     return axs
+#
+#
+def _ecg_plot(
+    ecg_signal: EcgResultDataFrame,
+    peaks: np.array,
+    outlier: np.array,
+    **kwargs,
+):
+    legend_loc = kwargs.get("legend_loc", "upper right")
+    legend_fontsize = kwargs.get("legend_fontsize", "small")
+
+    # axs["ecg"].get_shared_x_axes().join(axs["ecg"], axs["hr"])
+
+    # z-normalize the ecg signal for better visualization
+    ecg_clean = nk.standardize(ecg_signal["ECG_Clean"])
+    x_axis = ecg_signal.index
+    ylim_ecg = [-5, 10]
+    quality = ecg_signal["ECG_Quality"] * ylim_ecg[1]
+    minimum_line = np.full(len(x_axis), ylim_ecg[0])
+
+    # Plot quality area first
+    plot_area = hv.Area(
+        (x_axis, minimum_line),
+        # ,quality,
+        label="Quality",
+    ).opts(color=colors_all.med, ylim=(-5, 10))
+    # axs["ecg"].fill_between(
+    #     x_axis,
+    #     minimum_line,
+    #     quality,
+    #     alpha=0.2,
+    #     zorder=2,
+    #     interpolate=True,
+    #     facecolor=colors_all.med,
+    #     label="Quality",
+    # )
+    # Plot signals
+    plot_plot = hv.Curve(
+        (x_axis, ecg_clean),
+        # ("y", "ECG Signal (z-norm.)"),
+        label="ECG (z-norm.)",
+    ).opts(color=colors_all.fau)
+    # axs["ecg"].plot(
+    #     ecg_clean,
+    #     color=colors_all.fau,
+    #     label="ECG (z-norm.)",
+    #     zorder=1,
+    #     linewidth=1.5,
+    # )
+    plot_scatter = hv.Scatter(
+        (x_axis[peaks], ecg_clean.iloc[peaks]),
+        label="R Peaks",
+    ).opts(color=colors_all.nat)
+
+    # axs["ecg"].scatter(
+    #     x_axis[peaks],
+    #     ecg_clean.iloc[peaks],
+    #     color=colors_all.nat,
+    #     label="R Peaks",
+    #     zorder=2,
+    # )
+    plot_one = plot_area * plot_plot * plot_scatter
+    if "R_Peak_Outlier" in ecg_signal:
+        plot_scatter_two = hv.Scatter(
+            (x_axis[outlier], ecg_clean[outlier]),
+            label="Outlier",
+        ).opts(color=colors_all.phil)
+        plot_one = plot_one * plot_scatter_two
+        return plot_one
+
+        # axs["ecg"].scatter(
+        #     x_axis[outlier],
+        #     ecg_clean[outlier],
+        #     color=colors_all.phil,
+        #     label="Outlier",
+        #     zorder=2,
+        # )
+    # axs["ecg"].set_ylabel("ECG Signal (z-norm.)")
+    return plot_one
+
+
+#     # TODO
+#
+#     # # axs["ecg"].set_ylim(ylim_ecg)
+#     #
+#     # # Optimize legend
+#     # handles, labels = axs["ecg"].get_legend_handles_labels()
+#     # # order = [2, 0, 1, 3]
+#     # order = [0, 1, 2, 3] if "R_Peak_Outlier" in ecg_signal else [0, 1, 2]
+#     #
+#     # axs["ecg"].legend(
+#     #     [handles[idx] for idx in order],
+#     #     [labels[idx] for idx in order],
+#     #     loc=legend_loc,
+#     #     fontsize=legend_fontsize,
+#     # )
+#     #
+#     # axs["ecg"].tick_params(axis="x", which="both", bottom=True, labelbottom=True)
+#     # axs["ecg"].tick_params(axis="y", which="major", left=True)
+#     #
+#     # if isinstance(ecg_signal.index, pd.DatetimeIndex):
+#     #     # TODO add axis style for non-Datetime axes
+#     #     axs["ecg"].xaxis.set_major_locator(mdates.MinuteLocator())
+#     #     axs["ecg"].xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+#     #     axs["ecg"].xaxis.set_minor_locator(mticks.AutoMinorLocator(6))
+#
+#
+# def hr_plot(
+#     heart_rate: pd.DataFrame,
+#     plot_mean: Optional[bool] = True,
+#     plot_outlier: Optional[bool] = False,
+#     outlier: Optional[np.ndarray] = None,
+#     **kwargs,
+# ) -> Tuple[plt.Figure, plt.Axes]:
+#     """Plot course of heart rate over time (tachogram).
+#
+#     This plot is also used as subplot in :func:\`~biopsykit.signals.ecg.plotting.ecg_plot\`.
+#
+#
+#     Parameters
+#     ----------
+#     heart_rate : :class:\`~pandas.DataFrame\`
+#         Dataframe with heart rate output. Output from :meth:\`~biopsykit.signals.ecg.EcgProcessor.ecg_process()\`.
+#     plot_mean : bool, optional
+#         Whether to plot the mean heart rate as horizontal line or not. Default: \`\`True\`\`
+#     plot_outlier : bool, optional
+#         Whether to plot ECG signal outlier as vertical outlier or not. Default: \`\`False\`\`
+#     outlier : :class:\`~numpy.ndarray\`, optional
+#         List of outlier indices. Only needed if \`\`plot_outlier\`\` is \`\`True\`\`. Default: \`\`None\`\`
+#     **kwargs
+#         Additional parameters to configure the plot. Parameters include:
+#
+#         * \`\`figsize\`\`: Figure size
+#         * \`\`title\`\`: Optional name to add to plot title (after "Electrocardiogram (ECG)")
+#         * \`\`legend_loc\`\`: Location of legend in plot. Passed as \`loc\` parameter to :meth:\`matplotlib.axes.Axes.legend\`.
+#         * \`\`legend_fontsize\`\`: Fontsize of legend text. Passed as \`fontsize\` parameter to
+#           :meth:\`matplotlib.axes.Axes.legend\`.
+#         * \`\`ax\`\`: Pre-existing axes for the plot. Otherwise, a new figure and axes object are created and returned.
+#
+#
+#     Returns
+#     -------
+#     fig : :class:\`~matplotlib.figure.Figure\`
+#         figure object
+#     ax : :class:\`~matplotlib.axes.Axes\`
+#         axes object
+#
+#
+#     See Also
+#     --------
+#     :func:\`~biopsykit.signals.ecg.plotting.ecg_plot\`
+#         plot ECG overview
+#
+#     """
+#     ax: plt.Axes = kwargs.pop("ax", None)
+#     title: str = kwargs.get("title", None)
+#     legend_loc = kwargs.get("legend_loc", "upper right")
+#     legend_fontsize = kwargs.get("legend_fontsize", "small")
+#     plt.rcParams["mathtext.default"] = "regular"
+#
+#     color = kwargs.pop("color", colors_all.wiso)
+#     mean_color = kwargs.pop("mean_color", colors_all.wiso_dark)
+#
+#     if ax is None:
+#         fig, ax = plt.subplots(figsize=kwargs.get("figsize"))
+#     else:
+#         fig = ax.get_figure()
+#
+#     sns.set_palette(cmaps.faculties)
+#
+#     if title:
+#         ax.set_title(f"Heart Rate - {title}")
+#
+#     ax.plot(
+#         heart_rate["Heart_Rate"],
+#         color=color,
+#         label="Heart Rate",
+#         linewidth=1.5,
+#         **kwargs,
+#     )
+#
+#     if plot_mean:
+#         _hr_plot_plot_mean(heart_rate, mean_color, ax)
+#
+#     ax.set_ylim(auto=True)
+#
+#     if plot_outlier:
+#         _hr_plot_plot_outlier(heart_rate, outlier, ax)
+#
+#     _hr_plot_style_axis(heart_rate, ax)
+#
+#     if plot_mean or plot_outlier:
+#         ax.legend(loc=legend_loc, fontsize=legend_fontsize)
+#
+#     fig.tight_layout()
+#     fig.autofmt_xdate(rotation=0, ha="center")
+#     return fig, ax
+#
+#
+# def _hr_plot_plot_mean(heart_rate: pd.DataFrame, mean_color: str, ax: plt.Axes):
+#     rate_mean = heart_rate["Heart_Rate"].mean()
+#     ax.axhline(
+#         y=rate_mean,
+#         label=f"Mean: {rate_mean:.1f} bpm",
+#         linestyle="--",
+#         color=mean_color,
+#         linewidth=2,
+#     )
+#     ax.margins(x=0)
+#
+#
+# def _hr_plot_plot_outlier(heart_rate: pd.DataFrame, outlier: np.ndarray, ax: plt.Axes):
+#     if "R_Peak_Outlier" in heart_rate.columns:
+#         outlier = heart_rate["R_Peak_Outlier"]
+#         outlier = heart_rate.index[np.where(outlier == 1)[0]]
+#     if outlier is not None:
+#         ax.scatter(
+#             x=outlier,
+#             y=heart_rate.loc[outlier, "Heart_Rate"],
+#             color=colors_all.phil,
+#             zorder=3,
+#             label="ECG Outlier",
+#         )
+#         ax.relim()
+#
+#
+# def _hr_plot_style_axis(heart_rate: pd.DataFrame, ax: plt.Axes):
+#     if isinstance(heart_rate.index, pd.DatetimeIndex):
+#         # TODO add axis style for non-Datetime axes
+#         ax.xaxis.set_major_locator(mdates.MinuteLocator())
+#         ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+#         ax.xaxis.set_minor_locator(mticks.AutoMinorLocator(6))
+#
+#     ax.tick_params(axis="x", which="both", bottom=True)
+#     ax.tick_params(axis="y", which="major", left=True)
+#     ax.yaxis.set_major_locator(mticks.MaxNLocator(5, steps=[5, 10]))
+#     ax.set_xlabel("Time")
+#     ax.set_ylabel("Heart Rate [bpm]")
+#
+#
+# def hrv_plot(
+#     ecg_processor: Optional["EcgProcessor"] = None,
+#     key: Optional[str] = None,
+#     ecg_signal: Optional[pd.DataFrame] = None,
+#     rpeaks: Optional[pd.DataFrame] = None,
+#     sampling_rate: Optional[int] = 256,
+#     plot_psd: Optional[bool] = True,
+#     **kwargs,
+# ) -> Tuple[plt.Figure, Sequence[plt.Axes]]:
+#     """Plot Heart Rate Variability results.
+#
+#     By default, it consists of 3 plots:
+#
+#     * \`top left\`: RR interval distribution (histogram) including boxplot to visualize distribution and median
+#     * \`bottom left\`: Power Spectral Density (PSD) plot of RR intervals
+#     * \`right\`: Poincaré plot of RR intervals
+#
+#     To use this function, either simply pass an :class:\`~biopsykit.signals.ecg.EcgProcessor\` object together with
+#     a \`\`key\`\` indicating which phase needs to be processed should be processed or the two dataframes \`\`ecg_signal\`\`
+#     and \`\`heart_rate\`\` resulting from :meth:\`~biopsykit.signals.ecg.EcgProcessor.ecg_process()\`.
+#
+#
+#     Parameters
+#     ----------
+#     ecg_processor : :class:\`~biopsykit.signals.ecg.EcgProcessor\`, optional
+#         \`\`EcgProcessor\`\` object. If this argument is passed, the \`\`key\`\` argument needs to be supplied as well.
+#     key : str, optional
+#         Dictionary key of the phase to process. Needed when \`\`ecg_processor\`\` is passed as argument.
+#     ecg_signal : :class:\`~pandas.DataFrame\`, optional
+#         dataframe with processed ECG signal. Output from :meth:\`~biopsykit.signals.ecg.EcgProcessor.ecg_process()\`.
+#     rpeaks : :class:\`~biopsykit.utils.datatype_helper.RPeakDataFrame\`, optional
+#         Dataframe with detected R peaks. Output from :meth:\`~biopsykit.signals.ecg.EcgProcessor.ecg_process()\`.
+#     sampling_rate : float, optional
+#         Sampling rate of recorded data in Hz. Not needed if \`\`ecg_processor\`\` is supplied as parameter.
+#         Default: 256
+#     plot_psd : bool, optional
+#         Whether to plot power spectral density (PDF) from frequency-based HRV analysis in a subplot or not.
+#         Default: \`\`True\`\`
+#     **kwargs
+#         Additional parameters to configure the plot. Parameters include:
+#
+#         * \`\`figsize\`\`: Figure size
+#         * \`\`title\`\`: Optional name to add to plot title (after "Electrocardiogram (ECG)")
+#         * \`\`legend_loc\`\`: Location of legend in plot. Passed as \`loc\` parameter to :meth:\`matplotlib.axes.Axes.legend\`.
+#         * \`\`legend_fontsize\`\`: Fontsize of legend text. Passed as \`fontsize\` parameter to
+#           :meth:\`matplotlib.axes.Axes.legend\`.
+#         * \`\`ax\`\`: Pre-existing axes for the plot. Otherwise, a new figure and axes object are created and returned.
+#
+#     Returns
+#     -------
+#     fig : :class:\`~matplotlib.figure.Figure\`
+#         figure object
+#     ax : :class:\`~matplotlib.axes.Axes\`
+#         axes object
+#
+#
+#     See Also
+#     --------
+#     :func:\`~biopsykit.signals.ecg.plotting.rr_distribution_plot\`
+#         plot RR interval distribution
+#     :func:\`~biopsykit.signals.ecg.plotting.hrv_poincare_plot\`
+#         plot HRV using Poincaré plot
+#     :func:\`~biopsykit.signals.ecg.plotting.hrv_frequency_plot\`
+#         plot Power Spectral Density (PSD) of RR intervals
+#
+#     """
+#     from biopsykit.signals.ecg import (
+#         EcgProcessor,
+#
+#     _assert_ecg_input(ecg_processor, key, ecg_signal, rpeaks)
+#
+#     title = kwargs.get("title", None)
+#     plt.rcParams["mathtext.default"] = "regular"
+#
+#     if ecg_processor is not None:
+#         rpeaks = ecg_processor.rpeaks[key]
+#         sampling_rate = ecg_processor.sampling_rate
+#
+#     # perform R peak correction before computing HRV measures
+#     rpeaks = EcgProcessor.correct_rpeaks(rpeaks=rpeaks, sampling_rate=sampling_rate)
+#
+#     fig = plt.figure(constrained_layout=False, figsize=kwargs.get("figsize", (14, 7)))
+#
+#     if plot_psd:
+#         spec = gs.GridSpec(ncols=2, nrows=2, height_ratios=[1, 1], width_ratios=[1, 1])
+#         axs = {
+#             "dist": fig.add_subplot(spec[0, :-1]),
+#             "freq": fig.add_subplot(spec[1, :-1]),
+#         }
+#     else:
+#         spec = gs.GridSpec(ncols=2, nrows=1, width_ratios=[1, 1])
+#         axs = {"dist": fig.add_subplot(spec[0, :-1])}
+#
+#     spec_within = gs.GridSpecFromSubplotSpec(
+#         4, 4, subplot_spec=spec[:, -1], wspace=0.025, hspace=0.05
+#     )
+#     axs["poin"] = fig.add_subplot(spec_within[1:4, 0:3])
+#     axs["poin_x"] = fig.add_subplot(spec_within[0, 0:3])
+#     axs["poin_y"] = fig.add_subplot(spec_within[1:4, 3])
+#     axs["poin"].get_shared_x_axes().join(axs["poin"], axs["poin_x"])
+#     axs["poin"].get_shared_y_axes().join(axs["poin"], axs["poin_y"])
+#
+#     if title:
+#         fig.suptitle(f"Heart Rate Variability (HRV) - {title}", fontweight="bold")
+#     else:
+#         fig.suptitle("Heart Rate Variability (HRV)", fontweight="bold")
+#
+#     rr_distribution_plot(rpeaks, sampling_rate, ax=axs["dist"])
+#     hrv_poincare_plot(
+#         rpeaks, sampling_rate, axs=[axs["poin"], axs["poin_x"], axs["poin_y"]]
+#     )
+#     if plot_psd:
+#         hrv_frequency_plot(rpeaks, sampling_rate, ax=axs["freq"])
+#
+#     fig.tight_layout()
+#     return fig, list(axs.values())
+#
+#
+# def hr_distribution_plot(
+#     heart_rate: pd.DataFrame, **kwargs
+# ) -> Tuple[plt.Figure, plt.Axes]:
+#     """Plot heart rate distribution (histogram).
+#
+#     This plot is also used as subplot in :func:\`~biopsykit.signals.ecg.plotting.ecg_plot\`.
+#
+#
+#     Parameters
+#     ----------
+#     heart_rate : :class:\`~pandas.DataFrame\`, optional
+#         dataframe with heart rate output. Output from :meth:\`~biopsykit.signals.ecg.EcgProcessor.ecg_process()\`
+#     **kwargs
+#         Additional parameters to configure the plot. Parameters include:
+#
+#         * \`\`figsize\`\`: Figure size
+#         * \`\`ax\`\`: Pre-existing axes for the plot. Otherwise, a new figure and axes object are created and returned.
+#
+#
+#     Returns
+#     -------
+#     fig : :class:\`~matplotlib.figure.Figure\`
+#         figure object
+#     ax : :class:\`~matplotlib.axes.Axes\`
+#         axes object
+#
+#     See Also
+#     --------
+#     :func:\`~biopsykit.signals.ecg.plotting.ecg_plot\`
+#         plot ECG overview
+#
+#     """
+#     ax: plt.Axes = kwargs.get("ax", None)
+#     plt.rcParams["mathtext.default"] = "regular"
+#
+#     if ax is None:
+#         fig, ax = plt.subplots(figsize=kwargs.get("figsize"))
+#     else:
+#         fig = ax.get_figure()
+#
+#     ax = sns.histplot(heart_rate, color=colors_all.tech, ax=ax, kde=True, legend=False)
+#
+#     ax.set_title("Heart Rate Distribution")
+#     ax.set_xlabel("Heart Rate [bpm]")
+#     ax.set_xlim(heart_rate.min().min() - 1, heart_rate.max().max() + 1)
+#     ax.tick_params(axis="x", which="major", bottom=True, labelbottom=True)
+#
+#     ax.set_yticks([])
+#     ax.set_ylabel("")
+#
+#     fig.tight_layout()
+#     return fig, ax
+#
+#
+# def rr_distribution_plot(
+#     rpeaks: pd.DataFrame, sampling_rate: Optional[int] = 256, **kwargs
+# ) -> Tuple[plt.Figure, plt.Axes]:
+#     """Plot distribution of RR intervals (histogram) with boxplot and rugplot.
+#
+#     This plot is also used as subplot in :func:\`~biopsykit.signals.ecg.plotting.hrv_plot\`.
+#
+#
+#     Parameters
+#     ----------
+#     rpeaks : :class:\`~pandas.DataFrame\`, optional
+#         dataframe with R peaks. Output of :meth:\`~biopsykit.signals.ecg.EcgProcessor.ecg_process()\`.
+#     sampling_rate : float, optional
+#         Sampling rate of recorded data in Hz. Default: 256
+#     **kwargs
+#         Additional parameters to configure the plot. Parameters include:
+#
+#         * \`\`figsize\`\`: Figure size
+#         * \`\`ax\`\`: Pre-existing axes for the plot. Otherwise, a new figure and axes object are created and returned.
+#
+#     Returns
+#     -------
+#     fig : :class:\`~matplotlib.figure.Figure\`
+#         figure object
+#     ax : :class:\`~matplotlib.axes.Axes\`
+#         axes object
+#
+#     See Also
+#     --------
+#     :func:\`~biopsykit.signals.ecg.plotting.hr_distribution_plot\`
+#         plot heart rate distribution (without boxplot and rugplot)
+#
+#     """
+#     ax: plt.Axes = kwargs.get("ax", None)
+#     plt.rcParams["mathtext.default"] = "regular"
+#
+#     if ax is None:
+#         fig, ax = plt.subplots(figsize=kwargs.get("figsize"))
+#     else:
+#         fig = ax.get_figure()
+#
+#     rri = _get_rr_intervals(rpeaks, sampling_rate)
+#
+#     sns.set_palette(sns.light_palette(colors_all.fau, 3, reverse=True)[:-1])
+#     sns.histplot(rri, ax=ax, bins=10, kde=False, alpha=0.5, zorder=1)
+#     sns.rugplot(rri, ax=ax, lw=1.5, height=0.05, zorder=2)
+#     ax2 = ax.twinx()
+#     sns.kdeplot(rri, ax=ax2, lw=2.0, zorder=1)
+#     ax2.set_ylim(0)
+#     ax2.axis("off")
+#
+#     ax.tick_params(axis="both", left=True, bottom=True)
+#     ax.set_title("Distribution of RR Intervals")
+#     ax.set_xlabel("RR Intervals [ms]")
+#     ax.set_ylabel("Count")
+#
+#     tech_light = sns.light_palette(colors_all.tech, 3)[1]
+#     ax2.boxplot(
+#         rri,
+#         vert=False,
+#         positions=[ax2.get_ylim()[-1] / 10 + 0.05 * ax2.get_ylim()[-1]],
+#         widths=ax2.get_ylim()[-1] / 10,
+#         manage_ticks=False,
+#         patch_artist=True,
+#         boxprops={
+#             "linewidth": 2.0,
+#             "color": tech_light,
+#             "facecolor": colors_all.tech,
+#         },
+#         medianprops={"linewidth": 2.0, "color": tech_light},
+#         whiskerprops={"linewidth": 2.0, "color": tech_light},
+#         capprops={"linewidth": 2.0, "color": tech_light},
+#         zorder=4,
+#     )
+#
+#     ax.set_xlim(0.95 * np.min(rri), 1.05 * np.max(rri))
+#
+#     fig.tight_layout()
+#     return fig, ax
+#
+#
+# def individual_beats_plot(
+#     ecg_signal: pd.DataFrame,
+#     rpeaks: Optional[Sequence[int]] = None,
+#     sampling_rate: Optional[int] = 256,
+#     **kwargs,
+# ) -> Tuple[plt.Figure, plt.Axes]:
+#     """Plot all segmented heart beats overlaid on top of each other.
+#
+#     This plot is also used as subplot in :func:\`~biopsykit.signals.ecg.plotting.ecg_plot\`.
+#
+#
+#     Parameters
+#     ----------
+#     ecg_signal : :class:\`~biopsykit.utils.datatype_helper.EcgResultDataFrame\`, optional
+#         Dataframe with processed ECG signal. Output from :meth:\`~biopsykit.signals.ecg.EcgProcessor.ecg_process()\`.
+#     rpeaks : :class:\`~biopsykit.utils.datatype_helper.RPeakDataFrame\`, optional
+#         Dataframe with detected R peaks or \`\`None\`\` to infer R peaks from \`\`ecg_signal\`\`. Default: \`\`None\`\`
+#     sampling_rate : float, optional
+#         Sampling rate of recorded data in Hz. Default: 256
+#     **kwargs
+#         Additional parameters to configure the plot. Parameters include:
+#
+#         * \`\`figsize\`\`: Figure size
+#         * \`\`ax\`\`: Pre-existing axes for the plot. Otherwise, a new figure and axes object are created and returned.
+#
+#
+#     Returns
+#     -------
+#     fig : :class:\`~matplotlib.figure.Figure\`
+#         figure object
+#     ax : :class:\`~matplotlib.axes.Axes\`
+#         axes object
+#
+#
+#     See Also
+#     --------
+#     :func:\`~biopsykit.signals.ecg.plotting.ecg_plot\`
+#         plot ECG overview
+#
+#     """
+#     ax: plt.Axes = kwargs.get("ax", None)
+#     plt.rcParams["mathtext.default"] = "regular"
+#
+#     if ax is None:
+#         fig, ax = plt.subplots(figsize=kwargs.get("figsize"))
+#     else:
+#         fig = ax.get_figure()
+#
+#     if rpeaks is None:
+#         rpeaks = np.where(ecg_signal["ECG_R_Peaks"] == 1)[0]
+#
+#     heartbeats = nk.ecg_segment(ecg_signal["ECG_Clean"], rpeaks, sampling_rate)
+#     heartbeats = nk.epochs_to_df(heartbeats)
+#     heartbeats_pivoted = heartbeats.pivot(
+#         index="Time", columns="Label", values="Signal"
+#     )
+#
+#     ax.set_title("Individual Heart Beats")
+#     ax.margins(x=0)
+#
+#     # Aesthetics of heart beats
+#     cmap = iter(
+#         plt.cm.YlOrRd(np.linspace(0, 1, num=int(heartbeats["Label"].nunique())))
+#     )
+#
+#     for x, color in zip(heartbeats_pivoted, cmap):
+#         ax.plot(heartbeats_pivoted[x], color=color)
+#
+#     ax.set_yticks([])
+#     ax.tick_params(axis="x", which="major", bottom=True, labelbottom=True)
+#
+#     fig.tight_layout()
+#     return fig, ax
+#
+#
+# # def ecg_plot_artifacts(ecg_signals: pd.DataFrame, sampling_rate: Optional[int] = 256):
+# #     # TODO not implemented yet
+# #     # Plot artifacts
+# #     _, rpeaks = nk.ecg_peaks(ecg_signals["ECG_Clean"], sampling_rate=sampling_rate)
+# #     _, _ = nk.signal_fixpeaks(rpeaks, sampling_rate=sampling_rate, iterative=True, show=True)
+#
+#
+# def hrv_poincare_plot(
+#     rpeaks: pd.DataFrame, sampling_rate: Optional[int] = 256, **kwargs
+# ) -> Tuple[plt.Figure, Sequence[plt.Axes]]:
+#     """Plot Heart Rate Variability as Poincaré Plot.
+#
+#     This plot is also used as subplot in :func:\`~biopsykit.signals.ecg.plotting.hrv_plot\`.
+#
+#
+#     Parameters
+#     ----------
+#     rpeaks : :class:\`~biopsykit.utils.datatype_helper.RPeakDataFrame\`
+#             Dataframe with detected R peaks. Output from :meth:\`~biopsykit.signals.ecg.EcgProcessor.ecg_process()\`.
+#     sampling_rate : float, optional
+#         Sampling rate of recorded data in Hz. Default: 256
+#     **kwargs
+#         Additional parameters to configure the plot. Parameters include:
+#
+#         * \`\`figsize\`\`: Figure size
+#         * \`\`ax\`\`: List of pre-existing axes for the plot. Otherwise, a new figure and list of axes objects are
+#           created and returned.
+#
+#
+#     Returns
+#     -------
+#     fig : :class:\`~matplotlib.figure.Figure\`
+#         Figure object
+#     axs : list of :class:\`~matplotlib.axes.Axes\`
+#         list of subplot axes objects
+#
+#     See Also
+#     --------
+#     :func:\`~biopsykit.signals.ecg.plotting.hrv_plot\`
+#         plot heart rate variability
+#
+#     """
+#     axs: List[plt.Axes] = kwargs.get("axs", None)
+#     plt.rcParams["mathtext.default"] = "regular"
+#
+#     if axs is None:
+#         fig = plt.figure(figsize=kwargs.get("figsize", (8, 8)))
+#         axs = []
+#         # Prepare figure
+#         spec = gs.GridSpec(4, 4)
+#         axs.append(plt.subplot(spec[1:4, 0:3]))
+#         axs.append(plt.subplot(spec[0, 0:3]))
+#         axs.append(plt.subplot(spec[1:4, 3]))
+#         spec.update(wspace=0.025, hspace=0.05)  # Reduce spaces
+#     else:
+#         fig = axs[0].get_figure()
+#
+#     rri = _get_rr_intervals(rpeaks, sampling_rate)
+#
+#     mean_rri = float(np.mean(rri))
+#     sd = np.ediff1d(rri)
+#     sdsd = np.std(sd, ddof=1)
+#     sd1 = sdsd / np.sqrt(2)
+#     sd2 = np.sqrt(2 * np.std(rri, ddof=1) ** 2 - sd1**2)
+#
+#     area = np.pi * sd1 * sd2
+#
+#     sns.set_palette(sns.light_palette(colors_all.fau, 3, reverse=True)[:-1])
+#     sns.kdeplot(
+#         x=rri[:-1],
+#         y=rri[1:],
+#         ax=axs[0],
+#         n_levels=20,
+#         fill=True,
+#         thresh=0.05,
+#         alpha=0.8,
+#     )
+#     sns.scatterplot(
+#         x=rri[:-1], y=rri[1:], ax=axs[0], alpha=0.5, edgecolor=colors_all.fau
+#     )
+#     sns.histplot(x=rri[:-1], bins=int(len(rri) / 10), ax=axs[1], edgecolor="none")
+#     sns.histplot(y=rri[1:], bins=int(len(rri) / 10), ax=axs[2], edgecolor="none")
+#
+#     ellipse = mpl.patches.Ellipse(
+#         (mean_rri, mean_rri),
+#         width=2 * sd2,
+#         height=2 * sd1,
+#         angle=45,
+#         ec=colors_all.fau,
+#         fc=colors_all.fau_dark,
+#         alpha=0.8,
+#     )
+#     axs[0].add_artist(ellipse)
+#
+#     na = 4
+#     arr_sd1 = axs[0].arrow(
+#         mean_rri,
+#         mean_rri,
+#         -(sd1 - na) * np.cos(np.deg2rad(45)),
+#         (sd1 - na) * np.cos(np.deg2rad(45)),
+#         head_width=na,
+#         head_length=na,
+#         linewidth=2.0,
+#         ec=colors_all.phil,
+#         fc=colors_all.phil,
+#         zorder=4,
+#     )
+#     arr_sd2 = axs[0].arrow(
+#         mean_rri,
+#         mean_rri,
+#         (sd2 - na) * np.cos(np.deg2rad(45)),
+#         (sd2 - na) * np.sin(np.deg2rad(45)),
+#         head_width=na,
+#         head_length=na,
+#         linewidth=2.0,
+#         ec=colors_all.med,
+#         fc=colors_all.med,
+#         zorder=4,
+#     )
+#     axs[0].add_line(
+#         mpl.lines.Line2D(
+#             (np.min(rri), np.max(rri)),
+#             (np.min(rri), np.max(rri)),
+#             c=colors_all.med,
+#             ls=":",
+#             lw=2.0,
+#             alpha=0.8,
+#         )
+#     )
+#     axs[0].add_line(
+#         mpl.lines.Line2D(
+#             (
+#                 mean_rri - sd1 * np.cos(np.deg2rad(45)) * na,
+#                 mean_rri + sd1 * np.cos(np.deg2rad(45)) * na,
+#             ),
+#             (
+#                 mean_rri + sd1 * np.sin(np.deg2rad(45)) * na,
+#                 mean_rri - sd1 * np.sin(np.deg2rad(45)) * na,
+#             ),
+#             c=colors_all.phil,
+#             ls=":",
+#             lw=2.0,
+#             alpha=0.8,
+#         )
+#     )
+#     # for Area and SD1/SD2 in Legend
+#     a3 = mpl.patches.Patch(facecolor="white", alpha=0.0)
+#     a4 = mpl.patches.Patch(facecolor="white", alpha=0.0)
+#
+#     axs[0].legend(
+#         [arr_sd1, arr_sd2, a3, a4],
+#         [
+#             "SD1: $%.3f ms$" % sd1,
+#             "SD2: $%.3f ms$" % sd2,
+#             "S: $%.3f ms^2$" % area,
+#             "SD1/SD2: %.3f" % (sd1 / sd2),
+#         ],
+#         framealpha=1,
+#         fontsize="small",
+#     )
+#
+#     axs[0].set_xlabel(r"$RR_{i}~[ms]$")
+#     axs[0].set_ylabel(r"$RR_{i+1}~[ms]$")
+#     axs[0].xaxis.set_major_locator(mticks.MultipleLocator(100))
+#     axs[0].xaxis.set_minor_locator(mticks.MultipleLocator(25))
+#     axs[0].yaxis.set_major_locator(mticks.MultipleLocator(100))
+#     axs[0].yaxis.set_minor_locator(mticks.MultipleLocator(25))
+#     axs[0].tick_params(axis="both", which="both", left=True, bottom=True)
+#     axs[0].tick_params(axis="x", labelrotation=30)
+#     axs[1].axis("off")
+#     axs[2].axis("off")
+#
+#     fig.tight_layout()
+#     return fig, axs
+#
+#
+# def hrv_frequency_plot(
+#     rpeaks: pd.DataFrame, sampling_rate: Optional[int] = 256, **kwargs
+# ) -> Tuple[plt.Figure, plt.Axes]:
+#     """Plot Power Spectral Density (PSD) of RR intervals.
+#
+#     This plot is also used as subplot in :func:\`~biopsykit.signals.ecg.plotting.hrv_plot\`.
+#
+#
+#     Parameters
+#     ----------
+#     rpeaks : :class:\`~biopsykit.utils.datatype_helper.RPeakDataFrame\`
+#             Dataframe with detected R peaks. Output from :meth:\`~biopsykit.signals.ecg.EcgProcessor.ecg_process()\`.
+#     sampling_rate : float, optional
+#         Sampling rate of recorded data in Hz. Default: 256
+#     **kwargs
+#         Additional parameters to configure the plot. Parameters include:
+#
+#         * \`\`figsize\`\`: Figure size
+#         * \`\`ax\`\`: Pre-existing axes for the plot. Otherwise, a new figure and axes object are created and returned.
+#
+#
+#     Returns
+#     -------
+#     fig : :class:\`~matplotlib.figure.Figure\`
+#         figure object
+#     ax : :class:\`~matplotlib.axes.Axes\`
+#         axes object
+#
+#
+#     See Also
+#     --------
+#     :func:\`~biopsykit.signals.ecg.plotting.hrv_plot\`
+#         plot heart rate variability
+#
+#     """
+#     ax: plt.Axes = kwargs.get("ax", None)
+#     plt.rcParams["mathtext.default"] = "regular"
+#
+#     if ax is None:
+#         fig, ax = plt.subplots(figsize=kwargs.get("figsize"))
+#     else:
+#         fig = ax.get_figure()
+#
+#     rpeaks = sanitize_input_1d(rpeaks["R_Peak_Idx"])
+#
+#     rri, rri_time, _ = _hrv_get_rri(rpeaks, sampling_rate=sampling_rate)
+#     rri, rri_time, fs = nk.intervals_process(
+#         rri, intervals_time=rri_time, interpolate=True, interpolation_rate=sampling_rate
+#     )
+#     hrv = nk.hrv_frequency(rpeaks, sampling_rate)
+#     out_bands = hrv[["HRV_ULF", "HRV_VLF", "HRV_LF", "HRV_HF", "HRV_VHF"]]
+#     out_bands.columns = [col.replace("HRV_", "") for col in out_bands.columns]
+#     _hrv_frequency_show(rri, out_bands, sampling_rate=fs, ax=ax)
+#
+#     ax.set_title("Power Spectral Density (PSD)")
+#     ax.set_ylabel("Spectrum $[{ms}^2/Hz]$")
+#     ax.set_xlabel("Frequency [Hz]")
+#
+#     ax.tick_params(axis="both", left=True, bottom=True)
+#     ax.margins(x=0)
+#     ax.set_ylim(0)
+#
+#     fig.tight_layout()
+#     return fig, ax
+#
+#
+# def _get_rr_intervals(
+#     rpeaks: pd.DataFrame, sampling_rate: Optional[int] = 256
+# ) -> np.array:
+#     rri = (np.ediff1d(rpeaks["R_Peak_Idx"], to_begin=0) / sampling_rate) * 1000
+#     rri = rri[1:]
+#     return rri
 
 
 class Session(PhysiologicalBase):
@@ -5321,7 +5244,10 @@ class AskToAddTimes(PhysiologicalBase):
 
 class AddTimes(PhysiologicalBase):
     time_upload = pn.widgets.FileInput(
-        styles={"background": "whitesmoke"}, multiple=False, accept=".xls,.xlsx,.csv"
+        styles={"background": "whitesmoke"},
+        multiple=False,
+        accept=".xls,.xlsx,.csv",
+        align="end",
     )
     datetime = [
         (
@@ -5329,9 +5255,6 @@ class AddTimes(PhysiologicalBase):
             pn.widgets.DatetimePicker(value=datetime.now()),
         )
     ]
-    add_button = pn.widgets.Button(name="Add timestamp", button_type="danger")
-    remove_button = pn.widgets.Button(name="Remove last Phase", button_type="danger")
-    pane = pn.Column()
     subject_log = None
     subject_timestamps = []
     df = None
@@ -5349,10 +5272,7 @@ class AddTimes(PhysiologicalBase):
         self.ready = False
         super().__init__(**params)
         self.update_step(6)
-        self.time_upload.link(self, callbacks={"value": self.parse_time_file})
-        self.times = pn.Column(
-            self.datetime[0][0], self.datetime[0][1], self.add_button
-        )
+        self.time_upload.link(self, callbacks={"filename": self.parse_time_file})
         self.times_to_subject = TimesToSubject([])
         self.select_subject = pn.widgets.Select(
             name="Select Subject column", visible=False
@@ -5360,7 +5280,6 @@ class AddTimes(PhysiologicalBase):
         self.select_condition = pn.widgets.Select(
             name="Select Condition column", visible=False
         )
-        self.select_condition.visible = True
         self.select_condition.link(
             self,
             callbacks={"value": self.condition_column_changed},
@@ -5396,6 +5315,8 @@ class AddTimes(PhysiologicalBase):
         return self._view
 
     def parse_time_file(self, target, event):
+        if self.time_upload.value is None:
+            return
         self.select_condition.visible = False
         self.select_subject.visible = False
         self.select_vp.visible = False
@@ -5528,7 +5449,6 @@ class AddTimes(PhysiologicalBase):
         ("trimmed_data", param.Dynamic),
         ("session", param.String),
         ("selected_signal", param.String),
-        ("recordings", param.String),
         ("recording", param.String),
         ("data", param.Dynamic),
         ("sampling_rate", param.Number),
@@ -5546,6 +5466,8 @@ class AddTimes(PhysiologicalBase):
         file_dict = self.times_to_subject.get_files_to_subjects()
         subject_time_dict = self.times_to_subject.get_subject_time_dict()
         for file_name in file_dict.keys():
+            if file_name not in self.data.keys():
+                continue
             self.data[file_dict[file_name]] = self.data.pop(file_name)
         self.subject_time_dict = subject_time_dict
         return (
@@ -5556,7 +5478,6 @@ class AddTimes(PhysiologicalBase):
             self.trimmed_data,
             self.session,
             self.signal,
-            self.recordings,
             self.recording,
             self.data,
             self.sampling_rate,
@@ -5613,7 +5534,6 @@ class FileUpload(PhysiologicalBase):
                 "filename": self.filename_changed,
             },
         )
-        # "value": self.parse_file_input,
         self._view = pn.Column(
             self.header,
             self.select_hardware,
@@ -5647,7 +5567,7 @@ class FileUpload(PhysiologicalBase):
         self.ready = self.data is not None
         self.data = None
         if self.file_input.value is None or len(self.file_input.value) <= 0:
-            print("No Files arrived")
+            app.notifications.error("No file uploaded")
             return
         print("parse file input 1")
         print(self.filename)
@@ -5823,6 +5743,7 @@ class FileUpload(PhysiologicalBase):
         self.sampling_rate = fs
         self.data = {file_name: df}
         self.ready = True
+        app.notifications.success("File uploaded successfully")
 
     def handle_xlsx_file(self, file_content: bytes, filename: string):
         if self.signal == "CFT":
@@ -6365,9 +6286,7 @@ class ProcessingAndPreview(PhysiologicalBase):
     def panel(self):
         self.results = self.processing()
         self.result_graph.set_signal_type(self.signal)
-        print("set signal type done")
         self.result_graph.set_sampling_rate(self.sampling_rate)
-        print("set sampling rate done")
         return self._view
 
 
@@ -6456,6 +6375,7 @@ class SetHRVParameters(PhysiologicalBase):
 
     def panel(self):
         return self._view
+
 
 
 class PhysSignalType(PhysiologicalBase):
@@ -6610,38 +6530,6 @@ class PhysiologicalPipeline:
                 "Preview": "Results",
             }
         )
-
-
-
-class PsychologicalPipeline:
-    pipeline = None
-    name = "Psychological Data"
-    icon_svg = "https://tabler-icons.io/static/tabler-icons/icons/brain.svg"
-    icon_name = "brain"
-
-    def __init__(self):
-        self.pipeline = pn.pipeline.Pipeline(
-            debug=True,
-        )
-
-        # self.pipeline.add_stage("Test", TestPage(), ready_parameter="ready")
-        self.pipeline.add_stage("Set upt Study Design", SetUpStudyDesign())
-
-        # self.pipeline.add_stage(
-        #     "Ask for Subject Condition List",
-        #     AskToLoadConditionList(),
-        #     ready_parameter="ready",
-        #     next_parameter="next_page",
-        #     auto_advance=True,
-        # )
-
-        # self.pipeline.define_graph(
-        #     {
-        #         "Ask for Recording Device": "Set Parsing Parameters",
-        #         "Set Parsing Parameters": "Ask for Format",
-        #         "Ask for Format": "Upload Sleep Data",
-        #     }
-        # )
 
 
 QUESTIONNAIRE_MAX_STEPS = 9
@@ -8023,97 +7911,6 @@ class QuestionnairePipeline:
             }
         )
 
-
-
-
-class SalivaPipeline:
-    pipeline = None
-    name = "Saliva"
-    icon_svg = "https://tabler-icons.io/static/tabler-icons/icons/test-pipe.svg"
-    icon_name = "test-pipe"
-
-    def __init__(self):
-        self.pipeline = pn.pipeline.Pipeline()
-        self.pipeline.add_stage(
-            "Ask for Format",
-            AskForFormat(),
-            **{"ready_parameter": "ready", "auto_advance": True},
-        )
-        self.pipeline.add_stage(
-            "Ask for Subject Condition List",
-            AskToLoadConditionList(),
-            **{
-                "ready_parameter": "ready",
-                "auto_advance": True,
-                "next_parameter": "next_page",
-            },
-        )
-        self.pipeline.add_stage(
-            "Add Condition List",
-            AddConditionList(),
-            **{"ready_parameter": "ready"},
-        )
-        self.pipeline.add_stage(
-            "Load Saliva Data",
-            LoadSalivaData(),
-        )
-        self.pipeline.add_stage("Show Features", ShowSalivaFeatures())
-
-        self.pipeline.define_graph(
-            {
-                "Ask for Format": "Ask for Subject Condition List",
-                "Ask for Subject Condition List": (
-                    "Add Condition List",
-                    "Load Saliva Data",
-                ),
-                "Add Condition List": "Load Saliva Data",
-                "Load Saliva Data": "Show Features",
-            }
-        )
-
-
-
-class SleepPipeline:
-    name = "Sleep"
-    icon_svg = "https://tabler-icons.io/static/tabler-icons/icons/bed.svg"
-    icon_name = "bed"
-
-    def __init__(self):
-        self.pipeline = pn.pipeline.Pipeline()
-        self.pipeline.add_stage(
-            "Ask for Recording Device",
-            ChooseRecordingDevice(),
-            **{"ready_parameter": "ready", "auto_advance": True},
-        )
-        self.pipeline.add_stage(
-            "Set Parsing Parameters",
-            SetSleepDataParameters(),
-        )
-
-        self.pipeline.add_stage("Ask for Format", ZipFolder())
-
-        self.pipeline.add_stage(
-            "Upload Sleep Data",
-            UploadSleepData(),
-            **{"ready_parameter": "ready", "auto_advance": True},
-        )
-
-        # self.pipeline.add_stage(
-        #     "Ask for Subject Condition List",
-        #     AskToLoadConditionList(),
-        #     ready_parameter="ready",
-        #     next_parameter="next_page",
-        #     auto_advance=True,
-        # )
-
-        self.pipeline.define_graph(
-            {
-                "Ask for Recording Device": "Set Parsing Parameters",
-                "Set Parsing Parameters": "Ask for Format",
-                "Ask for Format": "Upload Sleep Data",
-            }
-        )
-
 pn.extension(sizing_mode="stretch_width")
 pn.extension(notifications=True)
 pn.extension("plotly", "tabulator")
@@ -8345,9 +8142,6 @@ class TrimSession(PhysiologicalBase):
 os.environ["OUTDATED_IGNORE"] = "1"
 
 
-matplotlib.use("agg")
-
-
 pn.extension(sizing_mode="stretch_width")
 pn.extension(
     "plotly",
@@ -8355,112 +8149,6 @@ pn.extension(
 )
 pn.extension(notifications=True)
 pn.extension("plotly", "tabulator")
-
-
-pn.extension(sizing_mode="stretch_width")
-pn.extension(notifications=True)
-pn.extension("plotly", "tabulator")
-
-
-class MainPage(param.Parameterized):
-    app = None
-    name_pipeline_dict = {
-        "Physiological Data": PhysiologicalPipeline(),
-        "Psychological Data": PsychologicalPipeline(),
-        "Questionnaire Data": QuestionnairePipeline(),
-        "Saliva Data": SalivaPipeline(),
-        "Sleep Data": SleepPipeline(),
-    }
-
-    def start_pipeline(self, event):
-        pipeline_name = event.obj.name
-        if pipeline_name is None or pipeline_name not in self.name_pipeline_dict.keys():
-            app.notifications.error("No Pipeline found for this Button")
-            return
-        pipeline = self.name_pipeline_dict[pipeline_name]
-        pane = pn.Column(
-            pn.Row(
-                pn.layout.HSpacer(),
-                pipeline.pipeline.prev_button,
-                pipeline.pipeline.next_button,
-            ),
-            pipeline.pipeline.stage,
-            min_height=2000,
-        )
-        self.app.main[0].objects = [pane]
-
-    def get_sidebar(self):
-        column = pn.Column()
-        homeBtn = pn.widgets.Button(name="Home", button_type="primary")
-        homeBtn.on_click(self.get_main_menu)
-        column.append(homeBtn)
-        for pipeline in self.name_pipeline_dict.keys():
-            btn = pn.widgets.Button(
-                name=pipeline,
-                button_type="light",
-                icon=self.name_pipeline_dict[pipeline].icon_name,
-            )
-            btn.on_click(self.start_pipeline)
-            column.append(btn)
-        return column
-
-    def get_main_menu(self, event):
-        self.app.title = "BioPsyKit Dashboard"
-        fileString = """
-            # Welcome to the BioPsyKit Dashboard
-
-            ## Here you can analyse your Data using the BioPsyKit without any manual programming.
-
-            Please select below one of the Signals you want to analyse. The corresponding guide will help you to get the best out of your data.
-
-            """
-        card_list = []
-        for pipeline_name in self.name_pipeline_dict.keys():
-            btn = pn.widgets.Button(
-                name=pipeline_name,
-                sizing_mode="stretch_width",
-                align="end",
-                button_type="primary",
-            )
-            btn.on_click(self.start_pipeline)
-            card = pn.GridBox(
-                pn.pane.SVG(
-                    self.name_pipeline_dict[pipeline_name].icon_svg,
-                    align=("center"),
-                    sizing_mode="stretch_both",
-                    max_height=150,
-                    max_width=200,
-                    styles={"background": "whitesmoke"},
-                ),
-                pn.Spacer(height=45),
-                btn,
-                ncols=1,
-                styles={"background": "whitesmoke", "align": "center"},
-                width=250,
-                height=250,
-            )
-            card_list.append(card)
-        signalSelection = pn.GridBox(
-            *card_list,
-            ncols=3,
-            nrows=2,
-            max_width=1000,
-            height=600,
-        )
-        pane = pn.Column(pn.pane.Markdown(fileString), signalSelection)
-        if len(self.app.main) > 0:
-            self.app.main[0].objects = [pane]
-        else:
-            self.app.main.append(pane)
-
-    def __init__(self, app, **params):
-        self.app = app
-        self.welcomeText = WELCOME_TEXT
-        super().__init__(**params)
-        self._view = pn.Column(pn.pane.Markdown(self.welcomeText))
-
-    def view(self):
-        return self._view
 
 app = pn.template.BootstrapTemplate(
     title="BioPysKit Dashboard",
