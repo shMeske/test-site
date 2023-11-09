@@ -38,6 +38,7 @@ jobs:
       if: ${{ matrix.python-version == '3.10' }}
       run: |
         poetry run poe build_pipelines
+        ls -l
     - name: Upload site as artifact
       if: ${{ matrix.python-version == '3.10' }}
       uses: actions/upload-pages-artifact@v1
