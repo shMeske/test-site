@@ -8,10 +8,12 @@ on:
 
 jobs:
   test_build:
+
     runs-on: ubuntu-latest
     permissions:
       pages: write      # to deploy to Pages
       id-token: write   # to verify the deployment originates from an appropriate source
+      contents: read
     strategy:
       matrix:
         python-version: ["3.10"]
@@ -38,7 +40,6 @@ jobs:
         poetry run poe build_pipelines
     - name: Upload site as artifact
       if: ${{ matrix.python-version == '3.10' }}
-
       uses: actions/upload-pages-artifact@v1
       with:
         name: github-pages
