@@ -30,15 +30,14 @@ jobs:
         pip install poethepoet
         poetry config virtualenvs.in-project true
         poetry install -E mne -E jupyter
-#    - name: Testing
-#      if: ${{ matrix.python-version == '3.10' }}
-#      run: |
-#        poetry run poe test
+    - name: Testing
+      if: ${{ matrix.python-version == '3.10' }}
+      run: |
+        poetry run poe test
     - name: Building
       if: ${{ matrix.python-version == '3.10' }}
       run: |
         poetry run poe build_pipelines
-        ls -l
     - name: Upload site as artifact
       if: ${{ matrix.python-version == '3.10' }}
       uses: actions/upload-pages-artifact@v1
