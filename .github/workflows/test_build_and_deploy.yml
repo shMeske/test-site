@@ -41,7 +41,7 @@ jobs:
 
       uses: actions/upload-artifact@v3
       with:
-        name: site-files
+        name: github-pages
         path: |
           index
   deploy_to_gh_pages:
