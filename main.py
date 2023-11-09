@@ -19,6 +19,8 @@ app = pn.template.BootstrapTemplate(
     logo="./assets/Icons/biopsykit_Icon.png",
 )
 
+
+
 app.config.console_output = "disable"
 app.config.log_level = "CRITICAL"
 app.sidebar.constant = False
