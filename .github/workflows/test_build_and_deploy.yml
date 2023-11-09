@@ -36,16 +36,15 @@ jobs:
       if: ${{ matrix.python-version == '3.10' }}
       run: |
         poetry run poe build_pipelines
-    - name: Deploy to Repository
+    - name: Upload site as artifact
       if: ${{ matrix.python-version == '3.10' }}
 
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-pages-artifact@v1
       with:
         name: github-pages
         path: |
           index
-  deploy_to_gh_pages:
-
+  upload_artifact:
     needs: test_build
 
     # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
