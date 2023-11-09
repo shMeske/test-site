@@ -1,5 +1,5 @@
 const appName = 'Panel Pyodide App'
-const appCacheName = 'Panel Pyodide App-0163aae9039441409587b17243585aa9';
+const appCacheName = 'Panel Pyodide App-8e33814baaea4211b4a478f2be51de87';
 
 const preCacheFiles = ['images/favicon.ico', 'images/icon-vector.svg', 'images/icon-32x32.png', 'images/icon-192x192.png', 'images/icon-512x512.png', 'images/apple-touch-icon.png', 'images/index_background.png'];
 

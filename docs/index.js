@@ -49,12 +49,12 @@ from panel.io.pyodide import init_doc, write_doc
 init_doc()
 
 import os
+import param
+import panel as pn
 import warnings
 import numpy as np
 import pandas as pd
 import nilspodlib
-import panel as pn
-import param
 import datetime as datetime
 import biopsykit as bp
 import io
@@ -76,6 +76,31 @@ import holoviews as hv
 from holoviews import opts
 os.environ["OUTDATED_IGNORE"] = "1"
 pn.extension(notifications=True)
+
+
+class UnderConstruction(param.Parameterized):
+    ready = param.Boolean(default=False)
+
+    def panel(self):
+        pane = pn.Column(
+            pn.pane.Markdown(
+                "# This pipeline is currently under construction, "
+                "you can help us by contributing to the development of this pipeline. "
+                "For further information you can click on the Info button at the header."
+            ),
+            pn.pane.SVG(
+                link_url="https://tabler-icons.io/static/tabler-icons/icons/barrier-block.svg",
+                sizing_mode="stretch_width",
+                alt_text="Under Construction",
+                embed=True,
+                object="https://tabler-icons.io/static/tabler-icons/icons/barrier-block.svg",
+            ),
+        )
+        return pane
+
+
+
+
 from ast import literal_eval
 from datetime import datetime
 from io import BytesIO, StringIO
@@ -944,8 +969,6 @@ def load_withings_sleep_analyzer_raw_file(
 
 
 
-
-
 def add_keys_nested_dict(d, keys):
     if d is None:
         d = {}
@@ -1166,7 +1189,12 @@ class PsychologicalPipeline:
         )
 
         # self.pipeline.add_stage("Test", TestPage(), ready_parameter="ready")
-        self.pipeline.add_stage("Set upt Study Design", SetUpStudyDesign())
+        self.pipeline.add_stage(
+            "Under Construction",
+            UnderConstruction(),
+            ready_parameter="ready",
+        )
+        # self.pipeline.add_stage("Set up Study Design", SetUpStudyDesign())
 
         # self.pipeline.add_stage(
         #     "Ask for Subject Condition List",
@@ -2868,14 +2896,6 @@ class SalivaPipeline:
 
 
 
-
-class PlotResults(param.Parameterized):
-    data = param.Dynamic(default=None)
-    selected_device = param.String(default="")
-    processed_data = param.Dynamic(default=None)
-
-
-
 SLEEP_MAX_STEPS = 7
 
 POSSIBLE_DEVICES = [
@@ -2889,10 +2909,14 @@ UPLOAD_PARAMETERS_TEXT = "# Set sleep data parameters \\n Below you can set the 
 CHOOSE_DEVICE_TEXT = "# Choose the recording device \\n Below you can choose the device you used to record your sleep data. If you used a different device, please choose 'Other IMU Device'."
 ZIP_OR_FOLDER_TEXT = "# File or Folder? \\n If you want to upload a complete folder, please zip it first. You can then upload the zip file in the following step."
 UPLOAD_SLEEP_DATA_TEXT = "# Upload your sleep data \\n Please upload your sleep data in the following step. You can either upload a single file or a zip file containing all your files."
+ASK_TO_LOAD_CONDITION_LIST_SLEEP_TEXT = "# Do you want to add a condition list?"
+ADD_CONDITION_LIST_SLEEP_TEXT = "# Add a condition list"
+DOWNLOAD_SLEEP_RESULTS_TEXT = "# Download your results"
 
 
 
 class SleepBase(param.Parameterized):
+    data = param.Dynamic(default={})
     selected_device = param.String(default="")
     step = param.Integer(default=1)
     parsing_parameters = {
@@ -2919,6 +2943,7 @@ class SleepBase(param.Parameterized):
             + list(pytz.all_timezones),
         },
     }
+    processed_data = param.Dynamic(default=None)
     selected_parameters = param.Dynamic(
         default={
             "Withings": {
@@ -2936,7 +2961,7 @@ class SleepBase(param.Parameterized):
             },
         }
     )
-    data = param.Dynamic(default={})
+    processing_parameters = {}
 
     def __init__(self, **params):
         header_text = params.pop("HEADER_TEXT") if "HEADER_TEXT" in params else ""
@@ -2959,12 +2984,16 @@ class SleepBase(param.Parameterized):
         ("selected_device", param.String),
         ("selected_parameters", param.Dict),
         ("data", param.Dynamic),
+        ("processing_parameters", param.Dict),
+        ("processed_data", param.Dynamic),
     )
     def output(self):
         return (
             self.selected_device,
             self.selected_parameters,
             self.data,
+            self.processing_parameters,
+            self.processed_data,
         )
 
 
@@ -3009,7 +3038,13 @@ class UploadSleepData(SleepBase):
         super().__init__(**params)
         self.update_step(4)
         self.update_text(UPLOAD_SLEEP_DATA_TEXT)
-        self.upload_data.link(self, callbacks={"filename": self.filename_changed})
+        self.upload_data.link(
+            self,
+            callbacks={
+                "value": self.filename_changed,
+                "filename": self.filename_changed,
+            },
+        )
         self._view = pn.Column(self.header, self.upload_data)
 
     def filename_changed(self, _, event):
@@ -3119,6 +3154,13 @@ class UploadSleepData(SleepBase):
         if self.selected_device == "Other IMU Device":
             self.next_page = "Convert Acc to g"
         self.upload_data.accept = self.accepted_file_types[self.selected_device]
+        self.upload_data.link(
+            self,
+            callbacks={
+                "value": self.filename_changed,
+                "filename": self.filename_changed,
+            },
+        )
         return self._view
 
 
@@ -3149,6 +3191,244 @@ class ChooseRecordingDevice(SleepBase):
     def panel(self):
         self.device_selector.value = self.selected_device
         return self._view
+
+
+
+class AskToLoadSleepConditionList(SleepBase):
+    no_condition_list_btn = pn.widgets.Button(name="No", button_type="primary")
+    add_condition_list_btn = pn.widgets.Button(name="Yes")
+    ready = param.Boolean(default=False)
+    next_page = param.Selector(
+        default="Add Condition List",
+        objects=[
+            "Add Condition List",
+            "Set Sleep Data Parameters",
+        ],
+    )
+
+    def __init__(self, **params):
+        params["HEADER_TEXT"] = ASK_TO_LOAD_CONDITION_LIST_SLEEP_TEXT
+        super().__init__(**params)
+        self.update_step(2)
+        self.update_text(ASK_TO_LOAD_CONDITION_LIST_SLEEP_TEXT)
+        self.no_condition_list_btn.link(
+            self, callbacks={"clicks": self.no_condition_list}
+        )
+        self.add_condition_list_btn.link(
+            self, callbacks={"clicks": self.add_condition_list}
+        )
+        self._view = pn.Column(
+            self.header,
+            pn.Row(self.add_condition_list_btn, self.no_condition_list_btn),
+        )
+
+    def no_condition_list(self, _, event):
+        self.next_page = "Set Sleep Data Parameters"
+        self.ready = True
+
+    def add_condition_list(self, _, event):
+        self.next_page = "Add Condition List"
+        self.ready = True
+
+    def panel(self):
+        return self._view
+
+
+class AddSleepConditionList(SleepBase):
+    ready = param.Boolean(default=False)
+    upload_condition_list_btn = pn.widgets.FileInput(
+        name="Upload condition list", accept=".csv,.xls,.xlsx", multiple=False
+    )
+
+    def __init__(self, **params):
+        params["HEADER_TEXT"] = ADD_CONDITION_LIST_SLEEP_TEXT
+        super().__init__(**params)
+        self.update_step(2)
+        self.update_text(ADD_CONDITION_LIST_SLEEP_TEXT)
+        self.upload_condition_list_btn.link(
+            self, callbacks={"value": self.parse_file_input}
+        )
+        self._view = pn.Column(
+            self.header,
+            self.upload_condition_list_btn,
+        )
+
+    def parse_file_input(self, target, event):
+        try:
+            self.condition_list = load_subject_condition_list(
+                self.upload_condition_list_btn.value,
+                self.upload_condition_list_btn.filename,
+            )
+            app.notifications.success("Condition List successfully loaded")
+            self.ready = True
+        except Exception as e:
+            app.notifications.error("Error while loading data: " + str(e))
+            self.ready = False
+
+    def panel(self):
+        return self._view
+
+
+
+class DownloadSleepResults(SleepBase):
+    load_results_btn = pn.widgets.Button(name="Download Results", button_type="primary")
+    zip_buffer = io.BytesIO()
+    download = pn.widgets.FileDownload(
+        name="Load Sleep Results",
+        filename="Results.zip",
+    )
+
+    def __init__(self, **params):
+        params["HEADER_TEXT"] = DOWNLOAD_SLEEP_RESULTS_TEXT
+        super().__init__(**params)
+        self.update_step(7)
+        self.update_text(DOWNLOAD_SLEEP_RESULTS_TEXT)
+        self.download.callback = pn.bind(self.load_results)
+        self._view = pn.Column(
+            self.header,
+            self.download,
+        )
+
+    def load_results(self):
+        with zipfile.ZipFile(
+            self.zip_buffer, "a", zipfile.ZIP_DEFLATED, False
+        ) as zip_file:
+            for result in self.processed_data:
+                for key in result.keys():
+                    if isinstance(result[key], dict):
+                        df = pd.DataFrame.from_dict(result[key])
+                        df.to_excel(f"{key}.xlsx")
+                        zip_file.write(f"{key}.xlsx")
+                    elif isinstance(result[key], pd.DataFrame):
+                        result[key].to_excel(f"{key}.xlsx")
+                        zip_file.write(f"{key}.xlsx")
+        self.zip_buffer.seek(0)
+        return self.zip_buffer
+
+    def panel(self):
+        self.download.callback = pn.bind(self.load_results)
+        self.download.filename = "Results.zip"
+        self.download.name = "Download Results"
+        self.download.param.update()
+        return self._view
+
+
+
+class ProcessDataParameters(SleepBase):
+    possible_processing_parameters = {
+        "acceleration": {
+            "convert_to_g": True,
+            "algorithm_type": ["Cole/Kripke"],
+            "epoch_length": 60,
+        },
+        "actigraph": {
+            "algorithm_type": ["Cole/Kripke"],
+            "bed_interval": [],
+        },
+    }
+
+    # TODO -> wann acceleration, wann actigraph?
+    def show_parameters(self) -> pn.Column:
+        params = self.possible_processing_parameters["acceleration"]
+        col = pn.Column()
+        for parameter, options in params.items():
+            if options is None:
+                continue
+            if isinstance(options, list):
+                if parameter == "algorithm_type":
+                    widget = pn.widgets.Select(
+                        name=parameter,
+                        options=options,
+                    )
+                    widget.param.watch(self.parameter_changed, "value")
+                    col.append(widget)
+                else:
+                    widget = pn.widgets.MultiChoice(
+                        name=parameter,
+                        options=options,
+                    )
+                    widget.param.watch(self.parameter_changed, "value")
+                    col.append(widget)
+            elif isinstance(options, bool):
+                widget = pn.widgets.Checkbox(
+                    name=parameter,
+                    value=options,
+                )
+                widget.param.watch(self.parameter_changed, "value")
+                col.append(widget)
+            elif isinstance(options, int):
+                widget = pn.widgets.IntInput(
+                    name=parameter,
+                    value=options,
+                )
+                widget.param.watch(self.parameter_changed, "value")
+                col.append(widget)
+        return col
+
+    def parameter_changed(self, event):
+        self.processing_parameters[event.obj.name] = event.new
+
+    # TODO brauchen noch sampling_rate und zuordnung zwischen data
+    @param.output(
+        ("selected_device", param.String),
+        ("data", param.Dynamic),
+        ("processed_data", param.Dynamic),
+    )
+    def output(self):
+        self.processed_data = []
+        for ds in self.data:
+            results = bp.sleep.sleep_processing_pipeline.predict_pipeline_actigraph(
+                data=ds, **self.processing_parameters
+            )
+            self.processed_data.append(results)
+        return (self.selected_device, self.data, self.processed_data)
+
+    def panel(self):
+        text = "# Processing Parameters \\n Below you can choose the processing parameters for your data. If you are unsure, just leave the default values."
+        return pn.Column(pn.pane.Markdown(text), self.show_parameters())
+
+
+
+class ResultsPreview(SleepBase):
+    def show_results(self) -> pn.Column:
+        col = pn.Column()
+        if len(self.processed_data) == 1:
+            col.append(self.show_individual_results(self.processed_data[0]))
+            return col
+        result = 1
+        accordion = pn.Accordion()
+        for data in self.processed_data:
+            results_col = self.show_individual_results(data)
+            accordion.append((f"Result {result}", results_col))
+            result += 1
+
+    @staticmethod
+    def show_individual_results(data) -> pn.Column:
+        col = pn.Column()
+        for key, value in data.items():
+            if isinstance(value, pd.DataFrame):
+                col.append(pn.widgets.Tabulator(value, name=key))
+                col.append(pn.layout.Divider())
+            elif isinstance(value, list):
+                text = pn.widgets.StaticText(name=key, value=value)
+                col.append(text)
+                col.append(pn.layout.Divider())
+            elif isinstance(value, dict) and key == "sleep_endpoints":
+                col.append(
+                    pn.widgets.Tabulator(
+                        bp.sleep.sleep_endpoints.endpoints_as_df(value), name=key
+                    )
+                )
+                col.append(pn.layout.Divider())
+            else:
+                text = pn.widgets.StaticText(name=key, value=value)
+                col.append(text)
+                col.append(pn.layout.Divider())
+        return col
+
+    def panel(self):
+        text = "# Results Preview \\n Below you can see a preview of the results. If you are satisfied with the results, you can click 'Save Results' to save the results to your local machine."
+        return pn.Column(pn.pane.Markdown(text), self.show_results())
 
 
 
@@ -3240,149 +3520,43 @@ class SleepPipeline:
             **{"ready_parameter": "ready", "auto_advance": True},
         )
 
-        # self.pipeline.add_stage(
-        #     "Ask for Subject Condition List",
-        #     AskToLoadConditionList(),
-        #     ready_parameter="ready",
-        #     next_parameter="next_page",
-        #     auto_advance=True,
-        # )
+        self.pipeline.add_stage(
+            "Ask for Subject Condition List",
+            AskToLoadSleepConditionList(),
+            ready_parameter="ready",
+            next_parameter="next_page",
+            auto_advance=True,
+        )
+
+        self.pipeline.add_stage(
+            "Upload Subject Condition List",
+            AddSleepConditionList(),
+            ready_parameter="ready",
+        )
+        self.pipeline.add_stage("Set Sleep Data Parameters", SetSleepDataParameters())
+
+        self.pipeline.add_stage("Process Data Parameters", ProcessDataParameters())
+
+        self.pipeline.add_stage("Results Preview", ResultsPreview())
+
+        self.pipeline.add_stage("Download Results", DownloadSleepResults())
 
         self.pipeline.define_graph(
             {
                 "Ask for Recording Device": "Set Parsing Parameters",
                 "Set Parsing Parameters": "Ask for Format",
                 "Ask for Format": "Upload Sleep Data",
+                "Upload Sleep Data": "Ask for Subject Condition List",
+                "Ask for Subject Condition List": (
+                    "Upload Subject Condition List",
+                    "Set Sleep Data Parameters",
+                ),
+                "Upload Subject Condition List": "Set Sleep Data Parameters",
+                "Set Sleep Data Parameters": "Process Data Parameters",
+                "Process Data Parameters": "Results Preview",
+                "Results Preview": "Download Results",
             }
         )
-
-
-
-
-class ResultsPreview(param.Parameterized):
-    data = param.Dynamic(default=None)
-    selected_device = param.String(default="")
-    processed_data = param.Dynamic(default=None)
-
-    def show_results(self) -> pn.Column:
-        col = pn.Column()
-        if len(self.processed_data) == 1:
-            col.append(self.show_individual_results(self.processed_data[0]))
-            return col
-        result = 1
-        accordion = pn.Accordion()
-        for data in self.processed_data:
-            results_col = self.show_individual_results(data)
-            accordion.append((f"Result {result}", results_col))
-            result += 1
-
-    @staticmethod
-    def show_individual_results(data) -> pn.Column:
-        col = pn.Column()
-        for key, value in data.items():
-            if isinstance(value, pd.DataFrame):
-                col.append(pn.widgets.Tabulator(value, name=key))
-                col.append(pn.layout.Divider())
-            elif isinstance(value, list):
-                text = pn.widgets.StaticText(name=key, value=value)
-                col.append(text)
-                col.append(pn.layout.Divider())
-            elif isinstance(value, dict) and key == "sleep_endpoints":
-                col.append(
-                    pn.widgets.Tabulator(
-                        bp.sleep.sleep_endpoints.endpoints_as_df(value), name=key
-                    )
-                )
-                col.append(pn.layout.Divider())
-            else:
-                text = pn.widgets.StaticText(name=key, value=value)
-                col.append(text)
-                col.append(pn.layout.Divider())
-        return col
-
-    def panel(self):
-        text = "# Results Preview \\n Below you can see a preview of the results. If you are satisfied with the results, you can click 'Save Results' to save the results to your local machine."
-        return pn.Column(pn.pane.Markdown(text), self.show_results())
-
-
-
-
-class ProcessDataParameters(param.Parameterized):
-    data = param.Dynamic(default=None)
-    selected_device = param.String(default="")
-    processed_data = param.Dynamic(default=None)
-    processing_parameters = {}
-    possible_processing_parameters = {
-        "acceleration": {
-            "convert_to_g": True,
-            "algorithm_type": ["Cole/Kripke"],
-            "epoch_length": 60,
-        },
-        "actigraph": {
-            "algorithm_type": ["Cole/Kripke"],
-            "bed_interval": [],
-        },
-    }
-
-    # TODO -> wann acceleration, wann actigraph?
-    def show_parameters(self) -> pn.Column:
-        params = self.possible_processing_parameters["acceleration"]
-        col = pn.Column()
-        for parameter, options in params.items():
-            if options is None:
-                continue
-            if isinstance(options, list):
-                if parameter == "algorithm_type":
-                    widget = pn.widgets.Select(
-                        name=parameter,
-                        options=options,
-                    )
-                    widget.param.watch(self.parameter_changed, "value")
-                    col.append(widget)
-                else:
-                    widget = pn.widgets.MultiChoice(
-                        name=parameter,
-                        options=options,
-                    )
-                    widget.param.watch(self.parameter_changed, "value")
-                    col.append(widget)
-            elif isinstance(options, bool):
-                widget = pn.widgets.Checkbox(
-                    name=parameter,
-                    value=options,
-                )
-                widget.param.watch(self.parameter_changed, "value")
-                col.append(widget)
-            elif isinstance(options, int):
-                widget = pn.widgets.IntInput(
-                    name=parameter,
-                    value=options,
-                )
-                widget.param.watch(self.parameter_changed, "value")
-                col.append(widget)
-        return col
-
-    def parameter_changed(self, event):
-        self.processing_parameters[event.obj.name] = event.new
-
-    # TODO brauchen noch sampling_rate und zuordnung zwischen data
-    @param.output(
-        ("selected_device", param.String),
-        ("data", param.Dynamic),
-        ("processed_data", param.Dynamic),
-    )
-    def output(self):
-        self.processed_data = []
-        for ds in self.data:
-            results = bp.sleep.sleep_processing_pipeline.predict_pipeline_actigraph(
-                data=ds, **self.processing_parameters
-            )
-            self.processed_data.append(results)
-        return (self.selected_device, self.data, self.processed_data)
-
-    def panel(self):
-        text = "# Processing Parameters \\n Below you can choose the processing parameters for your data. If you are unsure, just leave the default values."
-        return pn.Column(pn.pane.Markdown(text), self.show_parameters())
 
 
 WELCOME_TEXT = (
@@ -3400,7 +3574,7 @@ from biopsykit.protocols import CFT
 from matplotlib import pyplot as plt
 
 
-PHYSIOLOGICAL_MAX_STEPS = 12
+PHYSIOLOGICAL_MAX_STEPS = 10
 PHYSIOLOGICAL_SIGNAL_OPTIONS = ["", "ECG", "RSP", "EEG"]
 TIMEZONES = ["None Selected"] + list(pytz.all_timezones)
 PHYSIOLOGICAL_HW_OPTIONS = ["NilsPod", "BioPac"]
@@ -3529,16 +3703,19 @@ SET_RSP_PARAMETERS_TEXT = (
     "You ma also choose the method used to estimate the respiration signal from the ECG. \\n"
 )
 
+from biopsykit.signals.ecg import EcgProcessor
+
 
 
 class PhysiologicalBase(param.Parameterized):
-    artifact = pn.widgets.FloatInput(name="artifact", value=0)
-    correlation = pn.widgets.FloatInput(name="correlation", value=0.3)
-    correct_rpeaks = param.Boolean(default=False)
+    artifact = param.Dynamic(default=0.0)
+    correlation = param.Dynamic(default=0.3)
+    correct_rpeaks = param.Boolean(default=True)
     cft_sheets = param.Dynamic()
     cft_processor = {}
     data = param.Dynamic()
     data_processed = param.Boolean(default=False)
+    default_outlier_detection = param.Boolean(default=False)
     dict_hr_subjects = {}
     ecg_processor = param.Dynamic()
     eeg_processor = {}
@@ -3552,14 +3729,16 @@ class PhysiologicalBase(param.Parameterized):
     )
     hr_data = None
     hrv_types = param.List(default=None)
-    hrv_index_name = param.String(default="")
+    hrv_index_name = param.Dynamic(default=None)
+    hrv_index = param.Dynamic(default=None)
     original_data = param.Dynamic()
     progress = pn.indicators.Progress(
         name="Progress", height=20, sizing_mode="stretch_width"
     )
     phase_series = param.Dynamic()
-    physiological_upper = pn.widgets.IntInput(name="physiological_upper", value=200)
-    physiological_lower = pn.widgets.IntInput(name="physiological_lower", value=45)
+    physiological_upper = param.Integer(default=200)
+    physiological_lower = param.Integer(default=40)
+    quality = param.Dynamic(default=0.4)
     recording = param.String(default="Single Recording")
     rsp_processor = {}
     sampling_rate = param.Number(default=-1.0)
@@ -3576,10 +3755,10 @@ class PhysiologicalBase(param.Parameterized):
     step = param.Integer(default=1)
     subject_time_dict = param.Dynamic(default={})
     statistical_param = pn.widgets.FloatInput(name="Statistical:", value=2.576)
-    statistical_rr = pn.widgets.FloatInput(name="statistical_rr", value=2.576)
-    statistical_rr_diff = pn.widgets.FloatInput(name="statistical_rr_diff", value=1.96)
+    statistical_rr = param.Dynamic(default=2.576)
+    statistical_rr_diff = param.Dynamic(default=1.96)
     skip_outlier_detection = param.Boolean(default=True)
-    selected_outlier_methods = param.Dynamic(default=None)
+    outlier_methods = param.Dynamic(default=None)
     textHeader = ""
     times = None
     timezone = param.String(default="Europe/Berlin")
@@ -3588,7 +3767,6 @@ class PhysiologicalBase(param.Parameterized):
     trimmed_data = param.Dynamic()
     max_steps = PHYSIOLOGICAL_MAX_STEPS
     outlier_params = param.Dynamic(default=None)
-    quality = pn.widgets.FloatInput(name="quality", value=0.4)
 
     def __init__(self, **params):
         header_text = params.pop("HEADER_TEXT") if "HEADER_TEXT" in params else ""
@@ -3720,17 +3898,19 @@ class PhysiologicalBase(param.Parameterized):
     def get_outlier_params(self):
         if self.skip_outlier_detection:
             self.outlier_params = None
-            self.selected_outlier_methods = None
+            self.outlier_methods = None
             return None
+        if self.default_outlier_detection:
+            return EcgProcessor.outlier_params_default()
         self.outlier_params = {
-            "correlation": self.correlation.value,
-            "quality": self.quality.value,
-            "artifact": self.artifact.value,
-            "statistical_rr": self.statistical_rr.value,
-            "statistical_rr_diff": self.statistical_rr_diff.value,
+            "correlation": self.correlation,
+            "quality": self.quality,
+            "artifact": self.artifact,
+            "statistical_rr": self.statistical_rr,
+            "statistical_rr_diff": self.statistical_rr_diff,
             "physiological": (
-                self.physiological_lower.value,
-                self.physiological_upper.value,
+                self.physiological_lower,
+                self.physiological_upper,
             ),
         }
         return self.outlier_params
@@ -3772,7 +3952,7 @@ class PhysiologicalBase(param.Parameterized):
             self.time_log_present,
             self.time_log,
             self.get_outlier_params(),
-            self.selected_outlier_methods,
+            self.outlier_methods,
             self.skip_hrv,
             self.subject,
             self.cft_sheets,
@@ -3800,7 +3980,7 @@ class DownloadResults(PhysiologicalBase):
         self.download_btn = None
         params["HEADER_TEXT"] = DOWNLOAD_RESULT_TEXT
         super().__init__(**params)
-        self.update_step(12)
+        self.update_step(10)
         self._load_results_checkbox = pn.widgets.Checkbox(name="Load Results")
         self._view = pn.Column(self.header)
         self._view.append(self._load_results_checkbox)
@@ -3891,11 +4071,14 @@ class DownloadResults(PhysiologicalBase):
                     zip_file.write(f"hr_result_{key}.xlsx")
 
     def load_hrv_plots(self, zip_file):
-        for key in self.ecg_processor.ecg_result.keys():
-            buf = io.BytesIO()
-            fig, axs = bp.signals.ecg.plotting.hrv_plot(self.ecg_processor, key=key)
-            fig.savefig(buf)
-            zip_file.writestr(f"HRV_{key}.png", buf.getvalue())
+        for subject in self.ecg_processor.keys():
+            for key in self.ecg_processor[subject].ecg_result.keys():
+                buf = io.BytesIO()
+                fig, axs = bp.signals.ecg.plotting.hrv_plot(
+                    self.ecg_processor[subject], key=key
+                )
+                fig.savefig(buf)
+                zip_file.writestr(f"HRV_{key}.png", buf.getvalue())
 
     def load_ecg_plots(self, zip_file):
         print("load ecg plots")
@@ -5485,7 +5668,7 @@ class AddTimes(PhysiologicalBase):
             self.time_log_present,
             self.time_log,
             self.get_outlier_params(),
-            self.selected_outlier_methods,
+            self.outlier_methods,
             self.skip_hrv,
             self.subject,
             self.cft_sheets,
@@ -5917,9 +6100,6 @@ class AskToDetectOutliers(PhysiologicalBase):
     default_btn = pn.widgets.Button(
         name="Default", button_type="primary", sizing_mode="stretch_width"
     )
-    outlier_methods = pn.widgets.MultiChoice(
-        name="Methods", value=["quality", "artifact"], options=OUTLIER_METHODS
-    )
 
     def __init__(self, **params):
         params["HEADER_TEXT"] = ASK_DETECT_OUTLIER_TEXT
@@ -5941,11 +6121,16 @@ class AskToDetectOutliers(PhysiologicalBase):
     def click_detect_outlier(self, target, event):
         self.next = "Expert Outlier Detection"
         self.skip_outlier_detection = False
+        self.default_outlier_detection = False
         self.ready = True
 
     def click_default(self, target, event):
         self.next = "Do you want to process the HRV also?"
         self.skip_outlier_detection = False
+        self.default_outlier_detection = True
+        self.outlier_params = None
+        self.selected_outlier_methods = "all"
+
         self.ready = True
 
     def panel(self):
@@ -5954,9 +6139,18 @@ class AskToDetectOutliers(PhysiologicalBase):
 
 class OutlierDetection(PhysiologicalBase):
     textHeader = ""
-    outlier_methods = pn.widgets.MultiChoice(
+    select_outlier_methods = pn.widgets.MultiChoice(
         name="Methods", value=["quality", "artifact"], options=OUTLIER_METHODS
     )
+    set_correlation = pn.widgets.FloatInput(name="Correlation")  # , value=0.3
+    set_quality = pn.widgets.FloatInput(name="Quality")  # , value=0.3
+    set_artifact = pn.widgets.FloatInput(name="Artifact")  # , value=0.3
+    set_statistical_rr = pn.widgets.FloatInput(name="Statistical RR")  # , value=0.3
+    set_statistical_rr_diff = pn.widgets.FloatInput(
+        name="Statistical RR Diff"
+    )  # , value=0.3
+    set_physiological_lower = pn.widgets.IntInput(name="Physiological Lower")
+    set_physiological_upper = pn.widgets.IntInput(name="Physiological Upper")
 
     def __init__(self, **params):
         params["HEADER_TEXT"] = OUTLIER_DETECTION_TEXT
@@ -5965,21 +6159,25 @@ class OutlierDetection(PhysiologicalBase):
         self.update_step(6)
         self.update_text(OUTLIER_DETECTION_TEXT)
         self.set_progress_value(self.step)
-        self.physiological_upper.link(self, callbacks={"value": self.check_upper_bound})
-        self.physiological_lower.link(self, callbacks={"value": self.check_lower_bound})
-        self.outlier_methods.link(
+        self.set_physiological_lower.link(
+            self, callbacks={"value": self.check_upper_bound}
+        )
+        self.set_physiological_lower.link(
+            self, callbacks={"value": self.check_lower_bound}
+        )
+        self.select_outlier_methods.link(
             self, callbacks={"value": self.outlier_methods_changed}
         )
         pane = pn.Column(self.header)
         pane.append(
             pn.Column(
-                self.outlier_methods,
-                self.correlation,
-                self.quality,
-                self.artifact,
-                self.statistical_rr,
-                self.statistical_rr_diff,
-                pn.Row(self.physiological_lower, self.physiological_upper),
+                self.select_outlier_methods,
+                self.set_correlation,
+                self.set_quality,
+                self.set_artifact,
+                self.set_statistical_rr,
+                self.set_statistical_rr_diff,
+                pn.Row(self.set_physiological_lower, self.set_physiological_lower),
             )
         )
         self._view = pane
@@ -5990,22 +6188,37 @@ class OutlierDetection(PhysiologicalBase):
         self.selected_outlier_methods = event.new
 
     def check_upper_bound(self, target, event):
-        if self.physiological_upper.value < 0:
-            self.physiological_upper.value = 0
-        if self.physiological_lower.value > self.physiological_upper.value:
-            switched_value = self.physiological_lower.value
-            self.physiological_lower.value = self.physiological_upper.value
-            self.physiological_upper.value = switched_value
+        if self.set_physiological_upper.value < 0:
+            self.set_physiological_upper.value = 0
+        if self.set_physiological_lower.value > self.set_physiological_upper.value:
+            switched_value = self.set_physiological_lower.value
+            self.set_physiological_lower.value = self.set_physiological_upper.value
+            self.set_physiological_upper.value = switched_value
+        self.physiological_upper = self.set_physiological_upper.value
+        self.physiological_lower = self.set_physiological_lower.value
 
     def check_lower_bound(self, target, event):
-        if self.physiological_lower.value < 0:
-            self.physiological_lower.value = 0
-        if self.physiological_lower.value > self.physiological_upper.value:
-            switched_value = self.physiological_upper.value
-            self.physiological_upper.value = self.physiological_lower.value
-            self.physiological_lower.value = switched_value
+        if self.set_physiological_lower.value < 0:
+            self.set_physiological_lower.value = 0
+        if self.set_physiological_lower.value > self.set_physiological_upper.value:
+            switched_value = self.set_physiological_upper.value
+            self.set_physiological_upper.value = self.set_physiological_lower.value
+            self.set_physiological_lower.value = switched_value
+        self.physiological_upper = self.set_physiological_upper.value
+        self.physiological_lower = self.set_physiological_lower.value
+
+    def set_values_of_widgets(self):
+        self.select_outlier_methods.value = self.selected_outlier_methods
+        self.set_correlation.value = self.correlation
+        self.set_quality.value = self.quality
+        self.set_artifact.value = self.artifact
+        self.set_statistical_rr.value = self.statistical_rr
+        self.set_statistical_rr_diff.value = self.statistical_rr_diff
+        self.set_physiological_lower.value = self.physiological_lower
+        self.set_physiological_upper.value = self.physiological_upper
 
     def panel(self):
+        self.set_values_of_widgets()
         return self._view
 from biopsykit.protocols import CFT
 from biopsykit.signals.ecg import EcgProcessor
@@ -6024,7 +6237,7 @@ class ProcessingPreStep(PhysiologicalBase):
     def __init__(self, **params):
         params["HEADER_TEXT"] = PRESTEP_PROCESSING_TEXT
         super().__init__(**params)
-        self.update_step(8)
+        self.update_step(9)
         self.ready_btn.link(self, callbacks={"clicks": self.ready_btn_click})
         self._view = pn.Column(
             self.header,
@@ -6104,7 +6317,7 @@ class ProcessingAndPreview(PhysiologicalBase):
                     time_intervals=time_intervals,
                 )
                 ep.ecg_process(
-                    outlier_correction=self.selected_outlier_methods,
+                    outlier_correction=self.outlier_methods,
                     outlier_params=self.outlier_params,
                 )
                 phases = (
@@ -6194,14 +6407,15 @@ class ProcessingAndPreview(PhysiologicalBase):
         col = pn.Column()
         self.ecg_processor = {}
         for subject in self.data.keys():
-            print(subject)
             ep = EcgProcessor(
                 data=self.data[subject],
                 sampling_rate=self.sampling_rate,
                 time_intervals=self.get_timelog(subject),
             )
+            outlier_params = self.get_outlier_params()
+
             ep.ecg_process(
-                outlier_correction=self.selected_outlier_methods,
+                outlier_correction=self.outlier_methods,
                 outlier_params=self.outlier_params,
             )
             self.ecg_processor[subject] = ep
@@ -6279,8 +6493,8 @@ class ProcessingAndPreview(PhysiologicalBase):
                     self.ecg_processor[subject],
                     key,
                     index=subject,
-                    hrv_types=self.hrv_types.value,
-                    correct_rpeaks=self.correct_rpeaks.value,
+                    hrv_types=self.hrv_types,
+                    correct_rpeaks=self.correct_rpeaks,
                 )
 
     def panel(self):
@@ -6330,6 +6544,10 @@ class AskToProcessHRV(PhysiologicalBase):
     def click_default_hrv(self, target, event):
         self.next_page = "Now the Files will be processed"
         self.skip_hrv = False
+        self.hrv_types = None
+        self.correct_rpeaks = True
+        self.hrv_index_name = None
+        self.hrv_index = None
         self.ready = True
 
     def panel(self):
@@ -6374,6 +6592,9 @@ class SetHRVParameters(PhysiologicalBase):
         self.hrv_types = event.new
 
     def panel(self):
+        self.select_hrv_types.value = self.hrv_types
+        self.check_correct_rpeaks.value = self.correct_rpeaks
+        self.set_hrv_index_name.value = self.hrv_index_name
         return self._view
 
 
