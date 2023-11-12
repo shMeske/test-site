@@ -13,7 +13,7 @@ class AskToProcessHRV(PhysiologicalBase):
     methods = ["hrv_time", "hrv_nonlinear", "hrv_frequency"]
     skip_btn = pn.widgets.Button(name="Skip", sizing_mode="stretch_width")
     expert_mode_btn = pn.widgets.Button(
-        name="Expert Mode", button_type="warning", sizing_mode="stretch_width"
+        name="Expert Mode", button_type="danger", sizing_mode="stretch_width"
     )
     default_btn = pn.widgets.Button(
         name="Default", button_type="primary", sizing_mode="stretch_width"
@@ -32,7 +32,7 @@ class AskToProcessHRV(PhysiologicalBase):
         self.default_btn.link(self, callbacks={"clicks": self.click_default_hrv})
         self.expert_mode_btn.link(self, callbacks={"clicks": self.click_expert_hrv})
         self._view = pn.Column(
-            self.header, pn.Row(self.skip_btn, self.default_btn, self.expert_mode_btn)
+            self.header, pn.Row(self.default_btn, self.expert_mode_btn, self.skip_btn)
         )
 
     def click_skip(self, target, event):
@@ -48,6 +48,10 @@ class AskToProcessHRV(PhysiologicalBase):
     def click_default_hrv(self, target, event):
         self.next_page = "Now the Files will be processed"
         self.skip_hrv = False
+        self.hrv_types = None
+        self.correct_rpeaks = True
+        self.hrv_index_name = None
+        self.hrv_index = None
         self.ready = True
 
     def panel(self):
@@ -92,4 +96,7 @@ class SetHRVParameters(PhysiologicalBase):
         self.hrv_types = event.new
 
     def panel(self):
+        self.select_hrv_types.value = self.hrv_types
+        self.check_correct_rpeaks.value = self.correct_rpeaks
+        self.set_hrv_index_name.value = self.hrv_index_name
         return self._view

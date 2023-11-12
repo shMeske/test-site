@@ -64,14 +64,3 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v2 # or the latest "vX.X.X" version tag for this action
 
-#
-#    - name: Deploy to Github Pages
-#      if: ${{ matrix.python-version == '3.10' }}
-#      uses: crazy-max/ghaction-github-pages@v4
-#      with:
-#        target_branch: gh-pages
-#        build_dir: index
-#        keep_history: true
-#        commit_message: Automatic deployment to GitHub Pages
-#      env:
-#        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

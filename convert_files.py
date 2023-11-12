@@ -1,5 +1,6 @@
 import ast
 import os
+import shutil
 import sys
 from _ast import ImportFrom
 from typing import List
@@ -15,21 +16,65 @@ MAIN_FILE = "main.py"
 IGNORE_FOLDERS = ["build", "dist", "pyodide", "pyscript", "Miscellaneous"]
 files_added = []
 
+# "'biopsykit',"
 
 changed_imports = (
-    "  const env_spec = ['https://cdn.holoviz.org/panel/1.2.3/dist/wheels/bokeh-3.2.2-py3-none-any.whl', "
-    "'https://cdn.holoviz.org/panel/1.2.3/dist/wheels/panel-1.2.3-py3-none-any.whl', "
+    "  const env_spec = ['https://cdn.holoviz.org/panel/wheels/bokeh-3.3.0-py3-none-any.whl', "
+    "'https://cdn.holoviz.org/panel/1.3.1/dist/wheels/panel-1.3.1-py3-none-any.whl', "
     "'pyodide-http==0.2.1', "
     "'https://raw.githubusercontent.com/shMeske/WheelFiles/master/docopt-0.6.2-py2.py3-none-any.whl', "
     "'https://raw.githubusercontent.com/shMeske/WheelFiles/master/littleutils-0.2.2-py3-none-any.whl', "
-    # "'https://files.pythonhosted.org/packages/63/ea/ace1b9df189c149e7c1272c0159c17117096d889b0ccf2130358d52ee881/fau_colors-1.1.0-py3-none-any.whl',"
     "'fau_colors==1.5.3',"
     "'https://raw.githubusercontent.com/shMeske/WheelFiles/master/pingouin-0.5.4-py3-none-any.whl', "
-    "'biopsykit',"
+    "'https://raw.githubusercontent.com/shMeske/WheelFiles/master/zope.interface-6.2.dev0-py3-none-any.whl', "
+    "'https://raw.githubusercontent.com/shMeske/WheelFiles/master/biopsykit-0.9.0-py3-none-any.whl', "
+    "'datetime', "
     "'seaborn', "
-    "'matplotlib', 'nilspodlib', 'numpy', 'packaging', "
-    "'pandas', 'param', 'plotly', 'pytz',  'typing_extensions','holoviews', 'mne']\n"
+    "'matplotlib',"
+    "'nilspodlib', "
+    "'numpy', "
+    "'packaging', "
+    "'pandas', "
+    "'param', "
+    "'pathlib', "
+    "'plotly', "
+    "'pytz',  "
+    "'typing', "
+    "'typing_extensions',"
+    "'holoviews', "
+    "'mne'"
+    "]\n"
 )
+
+# const_env_spec = [
+#     "https://cdn.holoviz.org/panel/wheels/bokeh-3.3.0-py3-none-any.whl",
+#     "https://cdn.holoviz.org/panel/1.3.1/dist/wheels/panel-1.3.1-py3-none-any.whl",
+#     "pyodide-http==0.2.1",
+#     "ast",
+#     "biopsykit",
+#     "datetime",
+#     "fau_colors",
+#     "io",
+#     "math",
+#     "matplotlib",
+#     "nilspodlib",
+#     "numpy",
+#     "os",
+#     "packaging",
+#     "pandas",
+#     "param",
+#     "pathlib",
+#     "plotly",
+#     "pytz",
+#     "re",
+#     "seaborn",
+#     "string",
+#     "typing",
+#     "typing_extensions",
+#     "warnings",
+#     "zipfile",
+# ]
+
 
 # == 0.11.2
 
@@ -67,6 +112,7 @@ def get_combined_files_string(python_file_dict: dict) -> str:
             out_file_text += "\n\n"
             out_file_text += value
         out_file_text = replace_all_imports(out_file_text, python_file_dict)
+        files_added.append(key)
     return out_file_text
 
 
@@ -86,6 +132,12 @@ def replace_all_imports(out_file_text: str, python_file_dict: dict) -> str:
             if isinstance(n, ast.ImportFrom) and n.module.startswith("src")
         ]
     return out_file_text
+
+
+def replace_manifest_file_and_images():
+    target_path = "./index"
+    source_path = "./assets/PWA"
+    shutil.copytree(source_path, target_path, dirs_exist_ok=True)
 
 
 def add_subpart(
@@ -242,7 +294,12 @@ def remove_redundant_imports(pipeline_type: str):
         for i in n.names
     ]
     imports = list(dict.fromkeys(imports))
-    existing_imports = []
+    existing_imports = [
+        "import numpy as np\n",
+        "import holoviews as hv\n",
+        "from holoviews import opts\n",
+        # "hv.extension('matplotlib')\n",
+    ]
     with open(pipeline_type, "r") as input_file:
         for line in input_file:
             if "from main import app" in line:
@@ -297,6 +354,7 @@ def build_all_pipelines_into_one():
     combine_all_files()
     remove_redundant_imports(RESULTING_FILENAME)
     convert_to_pyodide(RESULTING_FILENAME)
+    replace_manifest_file_and_images()
 
 
 if __name__ == "__main__":

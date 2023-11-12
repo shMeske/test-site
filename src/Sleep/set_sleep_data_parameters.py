@@ -1,4 +1,5 @@
 import panel as pn
+import biopsykit as bp
 
 from src.Sleep.SLEEP_CONSTANTS import UPLOAD_PARAMETERS_TEXT
 from src.Sleep.sleep_base import SleepBase
@@ -28,11 +29,13 @@ class SetSleepDataParameters(SleepBase):
                     name=parameter,
                     options=options,
                     value=set_value if set_value is not None else options[0],
+                    sizing_mode="stretch_width",
                 )
             elif isinstance(options, bool):
                 widget = pn.widgets.Checkbox(
                     name=parameter,
                     value=set_value,
+                    sizing_mode="stretch_width",
                 )
             else:
                 continue
@@ -56,6 +59,16 @@ class SetSleepDataParameters(SleepBase):
         pn.state.notifications.success(f"{target} changed to {event.new}")
 
     def panel(self):
+        data, fs = bp.example_data.get_sleep_imu_example()
+        try:
+            sleep_results = (
+                bp.sleep.sleep_processing_pipeline.predict_pipeline_acceleration(
+                    data, sampling_rate=fs, epoch_length=60
+                )
+            )
+        except Exception as e:
+            print(f"Exception in choose_device: {e}")
+            sleep_results = None
         if len(self.parameter_column.objects) == 0:
             self.parameter_column.append(
                 self.get_parameter_column_for_selected_device()
