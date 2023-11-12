@@ -14,7 +14,9 @@ def script_dir():
 def upload_questionnaire():
     upload_data = UploadQuestionnaireData()
     upload_data.file_input.filename = None
-    upload_data.file_input.value = open(os.path.join(script_dir(), "questionnaire.csv"), "rb").read()
+    upload_data.file_input.value = open(
+        os.path.join(script_dir(), "questionnaire.csv"), "rb"
+    ).read()
     upload_data.file_input.filename = "questionnaire.csv"
     return upload_data.data
 
