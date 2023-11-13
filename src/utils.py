@@ -280,7 +280,7 @@ def load_saliva_plate(
 
     # TODO add remove_nan option (all or any)
     if regex_str is None:
-        regex_str = r"(Vp\d+) (S\w)"
+        regex_str = "(Vp\\d+) (S\\w)"
 
     if sample_id_col is None:
         sample_id_col = "sample ID"
@@ -290,19 +290,27 @@ def load_saliva_plate(
 
     if type(file) == pd.DataFrame:
         df_saliva = file[[sample_id_col, data_col]].copy()
+        print("after copy")
+        print(df_saliva.head())
     else:
         df_saliva = pd.read_excel(
             file, skiprows=2, usecols=[sample_id_col, data_col], **kwargs
         )
+
     cols = df_saliva[sample_id_col].str.extract(regex_str).copy()
     id_col_names = _get_id_columns(id_col_names, cols)
-
     df_saliva[id_col_names] = cols
-
+    print("after extract")
+    print(df_saliva.head())
     df_saliva = df_saliva.drop(columns=[sample_id_col], errors="ignore")
+    print("after drop")
+    print(df_saliva.head())
     df_saliva = df_saliva.rename(columns={data_col: saliva_type})
+    print("after rename")
+    print(df_saliva.head())
     df_saliva = df_saliva.set_index(id_col_names)
-
+    print("after set index")
+    print(df_saliva.head())
     if condition_list is not None:
         df_saliva = _apply_condition_list(df_saliva, condition_list)
 
