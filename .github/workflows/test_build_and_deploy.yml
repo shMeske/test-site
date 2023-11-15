@@ -7,45 +7,8 @@ on:
     branches: [ master ]
 
 jobs:
-  setup_environment:
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write      # to deploy to Pages
-      id-token: write   # to verify the deployment originates from an appropriate source
-      contents: read
-    strategy:
-      matrix:
-        python-version: [ "3.10" ]
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v3
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install poetry
-          pip install poethepoet
-          poetry config virtualenvs.in-project true
-          poetry install -E mne -E jupyter
-  test:
-    needs: setup_environment
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write      # to deploy to Pages
-      id-token: write   # to verify the deployment originates from an appropriate source
-      contents: read
-    strategy:
-      matrix:
-        python-version: [ "3.10" ]
-    steps:
-      - name: Testing
-        if: ${{ matrix.python-version == '3.10' }}
-        run: |
-          poetry run poe test
-  build_and_upload_artifact:
-    needs: test
+  test_build:
+
     runs-on: ubuntu-latest
     permissions:
       pages: write      # to deploy to Pages
@@ -55,6 +18,22 @@ jobs:
       matrix:
         python-version: ["3.10"]
     steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install poetry
+        pip install poethepoet
+        poetry config virtualenvs.in-project true
+        poetry install -E mne -E jupyter
+    - name: Testing
+      if: ${{ matrix.python-version == '3.10' }}
+      run: |
+        poetry run poe test
     - name: Building
       if: ${{ matrix.python-version == '3.10' }}
       run: |
@@ -66,19 +45,22 @@ jobs:
         name: github-pages
         path: index
   upload_artifact:
-    needs: build_and_upload_artifact
+    needs: test_build
 
+    # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
     permissions:
       pages: write      # to deploy to Pages
       id-token: write   # to verify the deployment originates from an appropriate source
 
+    # Deploy to the github-pages environment
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
           
+    # Specify runner + deployment step
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v2 # or the latest "vX.X.X" version tag for this action
 
