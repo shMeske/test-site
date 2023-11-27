@@ -6,6 +6,15 @@ on:
   pull_request:
     branches: [ master ]
 
+env:
+    # Name of module and id separated by a slash
+    INSTANCE: Writerside/hi
+    # Replace HI with the ID of the instance in capital letters
+    ARTIFACT: webHelpHI2-all.zip
+    # Writerside docker image version
+    DOCKER_VERSION: 232.10165.1
+
+
 jobs:
   test_build:
 
@@ -30,6 +39,24 @@ jobs:
         pip install poethepoet
         poetry config virtualenvs.in-project true
         poetry install -E mne -E jupyter
+
+    - name: Build Writerside docs using Docker
+      uses: JetBrains/writerside-github-action@v4
+      with:
+        instance: ${{ env.INSTANCE }}
+        artifact: ${{ env.ARTIFACT }}
+        docker-version: ${{ env.DOCKER_VERSION }}
+
+    - name: Upload documentation
+      uses: actions/upload-artifact@v3
+      with:
+        name: docs
+        path: |
+            artifacts/${{ env.ARTIFACT }}
+            artifacts/report.json
+        retention-days: 7
+
+
     - name: Testing
       if: ${{ matrix.python-version == '3.10' }}
       run: |
@@ -38,6 +65,7 @@ jobs:
       if: ${{ matrix.python-version == '3.10' }}
       run: |
         poetry run poe build_pipelines
+        unzip -qq ${{ env.ARTIFACT }} -d index/documentation
     - name: Upload site as artifact
       if: ${{ matrix.python-version == '3.10' }}
       uses: actions/upload-pages-artifact@v1
