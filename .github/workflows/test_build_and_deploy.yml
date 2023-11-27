@@ -99,7 +99,7 @@ jobs:
           name: github-pages
           path: index
     upload_artifact:
-      needs: test_build
+      needs: test_build_page
 
       # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
       permissions:
