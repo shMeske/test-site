@@ -19,7 +19,7 @@ env:
     ALGOLIA_ARTIFACT: algolia-indexes-HI.zip
 
 jobs:
-    build_documenation:
+    build_documentation:
         runs-on: ubuntu-latest
 
         steps:
@@ -51,6 +51,7 @@ jobs:
             retention-days: 7
 
     test_build_page:
+      needs: build_documentation
       runs-on: ubuntu-latest
       permissions:
         pages: write      # to deploy to Pages
